@@ -326,6 +326,22 @@
   color: var(--text-strong);
 }
 
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #191919;
+  padding: 4px;
+}
+
+.view-toggle .loyalty-studio-tabs__button {
+  min-height: 32px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
 .loyalty-studio-tab-panel {
   min-width: 0;
 }
