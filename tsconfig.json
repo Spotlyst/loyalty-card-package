@@ -15,8 +15,8 @@
     "isolatedModules": true,
     "noEmit": false,
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    "declarationMap": false,
+    "sourceMap": false,
     "rootDir": "src",
     "outDir": "dist",
     "jsx": "react-jsx"
