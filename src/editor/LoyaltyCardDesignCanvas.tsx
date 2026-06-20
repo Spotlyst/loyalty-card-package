@@ -8,6 +8,7 @@ type LoyaltyCardDesignCanvasProps = {
   face: LoyaltyCardFaceKey;
   selectedElementIds: string[];
   tokens?: LoyaltyCardTokens;
+  snapEnabled?: boolean;
   onSelectElement: (elementId: string, additive?: boolean, isolate?: boolean) => void;
   onBeginInteraction?: () => void;
   onChangeElement: (elementId: string, nextElement: LoyaltyCardElement, options?: { recordHistory?: boolean }) => void;
@@ -216,6 +217,7 @@ export function LoyaltyCardDesignCanvas({
   face,
   selectedElementIds,
   tokens = {},
+  snapEnabled = true,
   onSelectElement,
   onBeginInteraction,
   onChangeElement,
@@ -324,13 +326,13 @@ export function LoyaltyCardDesignCanvas({
       if (starts.length === 1) {
         const start = starts[0];
         const baseFrame = constrainFrame(start.x + dx, start.y + dy, start.width, start.height, start.rotation, schema);
-        const snapped = moveEvent.altKey ? { frame: baseFrame, guides: {} } : snapDragFrame(baseFrame, targets);
+        const snapped = !snapEnabled || moveEvent.altKey ? { frame: baseFrame, guides: {} } : snapDragFrame(baseFrame, targets);
         setSnapGuides(snapped.guides);
         commitFrame(start, constrainFrame(snapped.frame.x, snapped.frame.y, snapped.frame.width, snapped.frame.height, snapped.frame.rotation, schema));
         return;
       }
       const tentativeFrames = starts.map((start) => ({ ...start, x: start.x + dx, y: start.y + dy } as LoyaltyCardElement));
-      const groupSnap = moveEvent.altKey ? { dx: 0, dy: 0, guides: {} } : snapGroupFrame(groupFrame(tentativeFrames), targets);
+      const groupSnap = !snapEnabled || moveEvent.altKey ? { dx: 0, dy: 0, guides: {} } : snapGroupFrame(groupFrame(tentativeFrames), targets);
       setSnapGuides(groupSnap.guides);
       const framesById = new Map(starts.map((start) => [start.id, constrainFrame(start.x + dx + groupSnap.dx, start.y + dy + groupSnap.dy, start.width, start.height, start.rotation, schema)]));
       commitFrames(framesById);
@@ -391,7 +393,7 @@ export function LoyaltyCardDesignCanvas({
       }
 
       const baseFrame = constrainFrame(nextX, nextY, nextWidth, nextHeight, start.rotation, schema);
-      const snapped = moveEvent.altKey ? { frame: baseFrame, guides: {} } : snapResizeFrame(baseFrame, direction, targets);
+      const snapped = !snapEnabled || moveEvent.altKey ? { frame: baseFrame, guides: {} } : snapResizeFrame(baseFrame, direction, targets);
       if (lockAspectRatio && aspectRatio) {
         if (snapped.guides.x !== undefined) {
           const width = snapped.frame.width;

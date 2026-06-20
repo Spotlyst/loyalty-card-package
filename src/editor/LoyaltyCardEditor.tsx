@@ -222,6 +222,7 @@ export function LoyaltyCardEditor({
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [leftPanelTab, setLeftPanelTab] = useState<"tools" | "layers">("tools");
   const [inspectorPane, setInspectorPane] = useState<"properties" | "fontPicker">("properties");
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const [fontSearch, setFontSearch] = useState("");
   const undoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
   const redoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
@@ -511,6 +512,12 @@ export function LoyaltyCardEditor({
 
       if (isEditableTarget(event.target)) return;
 
+      if (!isModifier && event.shiftKey && key === "s") {
+        event.preventDefault();
+        setSnapEnabled((current) => !current);
+        return;
+      }
+
       if (isModifier && key === "z") {
         event.preventDefault();
         if (event.shiftKey) handleRedo();
@@ -663,10 +670,22 @@ export function LoyaltyCardEditor({
               <span>Canvas</span>
               <h2>{selectedPreset.name}</h2>
             </div>
-            <div className="view-toggle" role="tablist" aria-label="Card face">
-              {faceKeys.map((face) => (
-                <button key={face} className={activeFace === face ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" onClick={() => setActiveFace(face)}>{FACE_LABELS[face]}</button>
-              ))}
+            <div className="loyalty-studio-workspace-controls">
+              <button
+                type="button"
+                aria-pressed={snapEnabled}
+                title="Toggle snapping (Shift + S). Hold Alt/Option while dragging to temporarily disable snapping."
+                className={snapEnabled ? "loyalty-snap-toggle loyalty-snap-toggle--active" : "loyalty-snap-toggle"}
+                onClick={() => setSnapEnabled((current) => !current)}
+              >
+                <span>{snapEnabled ? "Snap On" : "Snap Off"}</span>
+                <kbd>Shift S</kbd>
+              </button>
+              <div className="view-toggle" role="tablist" aria-label="Card face">
+                {faceKeys.map((face) => (
+                  <button key={face} className={activeFace === face ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" onClick={() => setActiveFace(face)}>{FACE_LABELS[face]}</button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -675,6 +694,7 @@ export function LoyaltyCardEditor({
             face={activeFace}
             selectedElementIds={selectedElementIds}
             tokens={tokens}
+            snapEnabled={snapEnabled}
             onSelectElement={handleSelectElement}
             onBeginInteraction={recordHistorySnapshot}
             onChangeElement={(elementId, nextElement, options) => {
