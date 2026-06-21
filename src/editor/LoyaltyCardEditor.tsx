@@ -195,6 +195,91 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampColorAlpha(value: number) {
+  return Math.round(clampNumber(value, 0, 100));
+}
+
+function expandHexColor(value: string) {
+  const hex = value.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(hex) || /^[0-9a-fA-F]{4}$/.test(hex)) {
+    return hex.split("").map((char) => `${char}${char}`).join("");
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(hex) || /^[0-9a-fA-F]{8}$/.test(hex)) return hex;
+  return null;
+}
+
+function alphaToHex(alpha: number) {
+  return Math.round((clampColorAlpha(alpha) / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
+}
+
+function hexToAlpha(hex: string | undefined) {
+  if (!hex) return 100;
+  return Math.round((parseInt(hex, 16) / 255) * 100);
+}
+
+function parseColor(value: string | undefined, fallback = "#000000") {
+  const raw = String(value || "").trim();
+  const expanded = expandHexColor(raw) || expandHexColor(fallback) || "000000";
+  const hex = expanded.slice(0, 6).toUpperCase();
+  const alpha = expanded.length === 8 ? hexToAlpha(expanded.slice(6, 8)) : 100;
+  return {
+    hex: `#${hex}`,
+    alpha,
+    value: alpha >= 100 ? `#${hex}` : `#${hex}${alphaToHex(alpha)}`,
+  };
+}
+
+function formatColor(hex: string, alpha: number) {
+  const parsed = parseColor(hex);
+  const nextAlpha = clampColorAlpha(alpha);
+  return nextAlpha >= 100 ? parsed.hex : `${parsed.hex}${alphaToHex(nextAlpha)}`;
+}
+
+function ColorField({ icon, label, value, fallback = "#000000", onChange }: { icon?: IconSvgElement; label: string; value: string | undefined; fallback?: string; onChange: (value: string) => void }) {
+  const parsed = parseColor(value, fallback);
+  const [draft, setDraft] = useState(parsed.value);
+
+  useEffect(() => {
+    setDraft(parsed.value);
+  }, [parsed.value]);
+
+  const commitHex = (raw: string) => {
+    const expanded = expandHexColor(raw);
+    if (!expanded) return;
+    const hex = `#${expanded.slice(0, 6).toUpperCase()}`;
+    const alpha = expanded.length === 8 ? hexToAlpha(expanded.slice(6, 8)) : parsed.alpha;
+    onChange(formatColor(hex, alpha));
+  };
+
+  const commitAlpha = (alpha: number) => {
+    onChange(formatColor(parsed.hex, alpha));
+  };
+
+  return (
+    <label className={icon ? "field field--icon loyalty-color-field" : "field loyalty-color-field"}>
+      {icon ? <IconLabel icon={icon} label={label} /> : <span>{label}</span>}
+      <div className="loyalty-color-field__control">
+        <input className="loyalty-color-field__picker" type="color" value={parsed.hex} onChange={(event) => onChange(formatColor(event.target.value, parsed.alpha))} aria-label={`${label} color`} />
+        <input
+          className="loyalty-color-field__hex"
+          value={draft}
+          spellCheck={false}
+          onChange={(event) => {
+            const next = event.target.value.toUpperCase();
+            setDraft(next);
+            commitHex(next);
+          }}
+          onBlur={() => setDraft(parsed.value)}
+          aria-label={`${label} hex`}
+        />
+        <input className="loyalty-color-field__alpha-range" type="range" min="0" max="100" step="1" value={parsed.alpha} onChange={(event) => commitAlpha(Number(event.target.value))} aria-label={`${label} opacity`} />
+        <input className="loyalty-color-field__alpha" type="number" min="0" max="100" step="1" value={parsed.alpha} onChange={(event) => commitAlpha(Number(event.target.value))} aria-label={`${label} opacity percent`} />
+        <span className="loyalty-color-field__percent">%</span>
+      </div>
+    </label>
+  );
+}
+
 function moveLayer(elements: LoyaltyCardElement[], selectedElementId: string, direction: "up" | "down") {
   const ordered = normalizeLoyaltyCardLayerOrder(elements).sort((a, b) => a.zIndex - b.zIndex || elements.findIndex((element) => element.id === a.id) - elements.findIndex((element) => element.id === b.id));
   const selectedIndex = ordered.findIndex((element) => element.id === selectedElementId);
@@ -762,12 +847,12 @@ export function LoyaltyCardEditor({
                     <>
                       <label className="field"><span>{FACE_LABELS[activeFace]} background</span><select value={activeBackground.type} onChange={(event) => updateBackground(defaultBackground(event.target.value as LoyaltyCardBackground["type"], activeBackground))}><option value="solid">Solid</option><option value="gradient">Gradient</option><option value="image">Image</option></select></label>
                       {activeBackground.type === "solid" ? (
-                        <label className="field"><span>Color</span><input type="color" value={activeBackground.color} onChange={(event) => updateBackground({ ...activeBackground, color: event.target.value })} /></label>
+                        <ColorField label="Color" value={activeBackground.color} onChange={(color) => updateBackground({ ...activeBackground, color })} fallback="#111827" />
                       ) : null}
                       {activeBackground.type === "gradient" ? (
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field"><span>Color 1</span><input type="color" value={activeBackground.colors[0] || "#111827"} onChange={(event) => updateBackground({ ...activeBackground, colors: [event.target.value, activeBackground.colors[1] || "#F97316", activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} /></label>
-                          <label className="field"><span>Color 2</span><input type="color" value={activeBackground.colors[1] || "#F97316"} onChange={(event) => updateBackground({ ...activeBackground, colors: [activeBackground.colors[0] || "#111827", event.target.value, activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} /></label>
+                          <ColorField label="Color 1" value={activeBackground.colors[0] || "#111827"} onChange={(color) => updateBackground({ ...activeBackground, colors: [color, activeBackground.colors[1] || "#F97316", activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} fallback="#111827" />
+                          <ColorField label="Color 2" value={activeBackground.colors[1] || "#F97316"} onChange={(color) => updateBackground({ ...activeBackground, colors: [activeBackground.colors[0] || "#111827", color, activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} fallback="#F97316" />
                           <label className="field"><span>Angle</span><input type="number" value={activeBackground.angle} onChange={(event) => updateBackground({ ...activeBackground, angle: clampNumber(Number(event.target.value), 0, 360) })} /></label>
                         </div>
                       ) : null}
@@ -775,7 +860,7 @@ export function LoyaltyCardEditor({
                         <div className="loyalty-inspector-form">
                           <label className="field"><span>Image URL</span><input type="url" placeholder="https://..." value={activeBackground.imageUrl} onChange={(event) => updateBackground({ ...activeBackground, imageUrl: event.target.value })} /></label>
                           <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                            <label className="field"><span>Base color</span><input type="color" value={activeBackground.color} onChange={(event) => updateBackground({ ...activeBackground, color: event.target.value })} /></label>
+                            <ColorField label="Base color" value={activeBackground.color} onChange={(color) => updateBackground({ ...activeBackground, color })} fallback="#111827" />
                             <label className="field"><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={activeBackground.opacity ?? 1} onChange={(event) => updateBackground({ ...activeBackground, opacity: clampNumber(Number(event.target.value), 0, 1) })} /></label>
                             <label className="field"><span>Fit</span><select value={activeBackground.fit} onChange={(event) => updateBackground({ ...activeBackground, fit: event.target.value as "cover" | "contain" | "fill" | "manual" })}><option value="cover">Cover</option><option value="contain">Contain</option><option value="fill">Fill</option><option value="manual">Manual</option></select></label>
                             <label className="field"><span>Align X</span><select value={activeBackground.alignX || "center"} onChange={(event) => updateBackground({ ...activeBackground, alignX: event.target.value as "left" | "center" | "right" })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
@@ -857,8 +942,8 @@ export function LoyaltyCardEditor({
                           <label className="field field--icon"><IconLabel icon={CaseSensitiveIcon} label="Transform" /><select value={selectedElement.textTransform || "none"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, textTransform: event.target.value as "none" | "uppercase" | "lowercase" | "capitalize" } : element)}><option value="none">None</option><option value="uppercase">Uppercase</option><option value="lowercase">Lowercase</option><option value="capitalize">Capitalize</option></select></label>
                           <label className="field field--icon"><IconLabel icon={AlignLeftIcon} label="Align" /><select value={selectedElement.align} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, align: event.target.value as "left" | "center" | "right" } : element)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
                           <label className="field field--icon"><IconLabel icon={AlignVerticalCenterIcon} label="Vertical align" /><select value={selectedElement.verticalAlign || "center"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, verticalAlign: event.target.value as "top" | "center" | "bottom" } : element)}><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={TextColorIcon} label="Fill" /><input type="color" value={selectedElement.color} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, color: event.target.value } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Stroke" /><input type="color" value={selectedElement.textStrokeColor || "#000000"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, textStrokeColor: event.target.value } : element)} /></label>
+                          <ColorField label="Fill" value={selectedElement.color} onChange={(color) => updateSelectedElement((element) => element.type === "text" ? { ...element, color } : element)} fallback="#111827" />
+                          <ColorField label="Stroke" value={selectedElement.textStrokeColor || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "text" ? { ...element, textStrokeColor: color } : element)} fallback="#000000" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.textStrokeWidth || 0} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, textStrokeWidth: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
                         </div>
                       </div>
@@ -867,8 +952,8 @@ export function LoyaltyCardEditor({
                     {selectedElement.type === "shape" ? (
                       <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                         <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, shape: event.target.value as "rect" | "circle" | "blob", radius: event.target.value === "circle" ? 999 : element.radius || 24 } : element)}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
-                        <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Fill" /><input type="color" value={selectedElement.fill} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: event.target.value } : element)} /></label>
-                        <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Stroke" /><input type="color" value={selectedElement.stroke || "#000000"} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: event.target.value } : element)} /></label>
+                        <ColorField label="Fill" value={selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: color } : element)} fallback="#F97316" />
+                        <ColorField label="Stroke" value={selectedElement.stroke || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: color } : element)} fallback="#000000" />
                         <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
                         {selectedElement.shape === "rect" ? (
                           <>
@@ -881,7 +966,7 @@ export function LoyaltyCardEditor({
 
                     {selectedElement.type === "line" ? (
                       <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                        <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Color" /><input type="color" value={selectedElement.color} onChange={(event) => updateSelectedElement((element) => element.type === "line" ? { ...element, color: event.target.value } : element)} /></label>
+                        <ColorField label="Color" value={selectedElement.color} onChange={(color) => updateSelectedElement((element) => element.type === "line" ? { ...element, color } : element)} fallback="#111827" />
                         <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Stroke" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "line" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 1, 60) } : element)} /></label>
                       </div>
                     ) : null}
@@ -916,7 +1001,7 @@ export function LoyaltyCardEditor({
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Invert" /><input type="number" step="0.05" value={selectedElement.filterInvert ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterInvert: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Blur" /><input type="number" step="0.5" value={selectedElement.filterBlur ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBlur: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
                         </div>
-                        <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Tint" /><input type="color" value={selectedElement.tint} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, tint: event.target.value } : element)} /></label>
+                        <ColorField label="Tint" value={selectedElement.tint} onChange={(color) => updateSelectedElement((element) => element.type === "asset" ? { ...element, tint: color } : element)} fallback="#111827" />
                       </div>
                     ) : null}
 
@@ -947,8 +1032,8 @@ export function LoyaltyCardEditor({
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                           <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Empty mode" /><select value={selectedElement.emptyMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Image/SVG</option></select></label>
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Empty shape" /><select value={selectedElement.emptyShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyShape: event.target.value as "circle" | "rounded_square" | "heart", shape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Empty fill" /><input type="color" value={selectedElement.emptyFill || selectedElement.fill} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyFill: event.target.value, fill: event.target.value } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Empty stroke" /><input type="color" value={selectedElement.emptyStroke || selectedElement.stroke} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStroke: event.target.value, stroke: event.target.value } : element)} /></label>
+                          <ColorField label="Empty fill" value={selectedElement.emptyFill || selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyFill: color, fill: color } : element)} fallback="#FFFFFF" />
+                          <ColorField label="Empty stroke" value={selectedElement.emptyStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStroke: color, stroke: color } : element)} fallback="#111827" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Empty stroke width" /><input type="number" value={selectedElement.emptyStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={Link01Icon} label="Empty image URL" /><input type="url" placeholder="https://..." value={selectedElement.emptyImageUrl || ""} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyImageUrl: event.target.value, emptyMode: event.target.value.trim() ? "image" : element.emptyMode } : element)} /></label>
                         </div>
@@ -957,8 +1042,8 @@ export function LoyaltyCardEditor({
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                           <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Filled mode" /><select value={selectedElement.filledMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Image/SVG</option></select></label>
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Filled shape" /><select value={selectedElement.filledShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledShape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Filled fill" /><input type="color" value={selectedElement.filledFill || selectedElement.stroke} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledFill: event.target.value } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Filled stroke" /><input type="color" value={selectedElement.filledStroke || selectedElement.stroke} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStroke: event.target.value } : element)} /></label>
+                          <ColorField label="Filled fill" value={selectedElement.filledFill || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledFill: color } : element)} fallback="#F97316" />
+                          <ColorField label="Filled stroke" value={selectedElement.filledStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStroke: color } : element)} fallback="#F97316" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Filled stroke width" /><input type="number" value={selectedElement.filledStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={Link01Icon} label="Filled image URL" /><input type="url" placeholder="https://..." value={selectedElement.filledImageUrl || ""} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledImageUrl: event.target.value, filledMode: event.target.value.trim() ? "image" : element.filledMode } : element)} /></label>
                         </div>

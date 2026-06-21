@@ -1065,6 +1065,48 @@
   padding: 4px;
 }
 
+.loyalty-studio-inspector .loyalty-color-field {
+  min-width: 0;
+}
+
+.loyalty-studio-inspector .loyalty-inspector-form--grid > .loyalty-color-field {
+  grid-column: 1 / -1;
+}
+
+.loyalty-studio-inspector .loyalty-color-field__control {
+  display: grid;
+  grid-template-columns: 34px minmax(74px, 1fr) minmax(70px, 1fr) 48px 14px;
+  align-items: center;
+  gap: 6px;
+}
+
+.loyalty-studio-inspector .loyalty-color-field__picker {
+  height: 30px;
+  padding: 3px;
+}
+
+.loyalty-studio-inspector .loyalty-color-field__hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.loyalty-studio-inspector .loyalty-color-field__alpha-range {
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.loyalty-studio-inspector .loyalty-color-field__alpha {
+  padding-inline: 6px;
+  text-align: right;
+}
+
+.loyalty-studio-inspector .loyalty-color-field__percent {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .loyalty-studio-inspector .loyalty-layer-actions {
   gap: 6px;
 }
