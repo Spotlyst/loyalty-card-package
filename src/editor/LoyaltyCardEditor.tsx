@@ -247,9 +247,16 @@ export function LoyaltyCardEditor({
   }, [value.id]);
 
   useEffect(() => {
-    const firstElementId = value.designSchema.faces[activeFace]?.elements[0]?.id;
-    setSelectedElementIds(firstElementId ? [firstElementId] : []);
-  }, [value.id, activeFace, value.designSchema]);
+    setSelectedElementIds((current) => {
+      const elements = value.designSchema.faces[activeFace]?.elements || [];
+      const elementIds = new Set(elements.map((element) => element.id));
+      const validSelection = current.filter((id) => elementIds.has(id));
+      if (validSelection.length > 0) return validSelection;
+
+      const firstElementId = elements[0]?.id;
+      return firstElementId ? [firstElementId] : [];
+    });
+  }, [value.id, activeFace]);
 
   useEffect(() => {
     setInspectorPane("properties");
