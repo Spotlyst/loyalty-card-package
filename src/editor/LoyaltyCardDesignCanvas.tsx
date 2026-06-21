@@ -212,6 +212,47 @@ function snapResizeFrame(frame: Frame, direction: ResizeDirection, targets: Retu
   return { frame: next, guides };
 }
 
+function snapCenteredResizeFrame(frame: Frame, direction: ResizeDirection, targets: ReturnType<typeof snapTargets>, centerX: number, centerY: number) {
+  const next = { ...frame };
+  const guides: SnapGuides = {};
+
+  if (direction.includes("w")) {
+    const snap = closestSnap([next.x], targets.xTargets);
+    if (snap) {
+      next.x += snap.delta;
+      next.width -= snap.delta * 2;
+      guides.x = snap.guide;
+    }
+  } else if (direction.includes("e")) {
+    const snap = closestSnap([next.x + next.width], targets.xTargets);
+    if (snap) {
+      next.x -= snap.delta;
+      next.width += snap.delta * 2;
+      guides.x = snap.guide;
+    }
+  }
+
+  if (direction.includes("n")) {
+    const snap = closestSnap([next.y], targets.yTargets);
+    if (snap) {
+      next.y += snap.delta;
+      next.height -= snap.delta * 2;
+      guides.y = snap.guide;
+    }
+  } else if (direction.includes("s")) {
+    const snap = closestSnap([next.y + next.height], targets.yTargets);
+    if (snap) {
+      next.y -= snap.delta;
+      next.height += snap.delta * 2;
+      guides.y = snap.guide;
+    }
+  }
+
+  next.x = centerX - next.width / 2;
+  next.y = centerY - next.height / 2;
+  return { frame: next, guides };
+}
+
 export function LoyaltyCardDesignCanvas({
   schema,
   face,
@@ -360,6 +401,8 @@ export function LoyaltyCardDesignCanvas({
     const start = { ...element };
     const aspectRatio = element.type === "asset" && element.imageUrl ? element.width / element.height : null;
     const lockAspectRatio = Boolean(aspectRatio && direction.length === 2);
+    const centerX = start.x + start.width / 2;
+    const centerY = start.y + start.height / 2;
     const movingIds = new Set([element.id]);
     const targets = snapTargets(schema, activeFace.elements, movingIds);
 
@@ -371,15 +414,24 @@ export function LoyaltyCardDesignCanvas({
       let nextWidth = start.width;
       let nextHeight = start.height;
 
-      if (direction.includes("e")) nextWidth = start.width + dx;
-      if (direction.includes("s")) nextHeight = start.height + dy;
-      if (direction.includes("w")) {
-        nextX = start.x + dx;
-        nextWidth = start.width - dx;
-      }
-      if (direction.includes("n")) {
-        nextY = start.y + dy;
-        nextHeight = start.height - dy;
+      if (moveEvent.altKey) {
+        const widthDelta = direction.includes("e") ? dx : direction.includes("w") ? -dx : 0;
+        const heightDelta = direction.includes("s") ? dy : direction.includes("n") ? -dy : 0;
+        nextWidth = start.width + widthDelta * 2;
+        nextHeight = start.height + heightDelta * 2;
+        nextX = centerX - nextWidth / 2;
+        nextY = centerY - nextHeight / 2;
+      } else {
+        if (direction.includes("e")) nextWidth = start.width + dx;
+        if (direction.includes("s")) nextHeight = start.height + dy;
+        if (direction.includes("w")) {
+          nextX = start.x + dx;
+          nextWidth = start.width - dx;
+        }
+        if (direction.includes("n")) {
+          nextY = start.y + dy;
+          nextHeight = start.height - dy;
+        }
       }
 
       if (lockAspectRatio && aspectRatio) {
@@ -388,23 +440,34 @@ export function LoyaltyCardDesignCanvas({
         } else {
           nextWidth = nextHeight * aspectRatio;
         }
-        if (direction.includes("w")) nextX = start.x + start.width - nextWidth;
-        if (direction.includes("n")) nextY = start.y + start.height - nextHeight;
+        if (moveEvent.altKey) {
+          nextX = centerX - nextWidth / 2;
+          nextY = centerY - nextHeight / 2;
+        } else {
+          if (direction.includes("w")) nextX = start.x + start.width - nextWidth;
+          if (direction.includes("n")) nextY = start.y + start.height - nextHeight;
+        }
       }
 
       const baseFrame = constrainFrame(nextX, nextY, nextWidth, nextHeight, start.rotation, schema);
-      const snapped = !snapEnabled || moveEvent.altKey ? { frame: baseFrame, guides: {} } : snapResizeFrame(baseFrame, direction, targets);
+      const snapped = !snapEnabled ? { frame: baseFrame, guides: {} } : moveEvent.altKey ? snapCenteredResizeFrame(baseFrame, direction, targets, centerX, centerY) : snapResizeFrame(baseFrame, direction, targets);
       if (lockAspectRatio && aspectRatio) {
         if (snapped.guides.x !== undefined) {
           const width = snapped.frame.width;
           const height = width / aspectRatio;
           snapped.frame.height = height;
-          if (direction.includes("n")) snapped.frame.y = start.y + start.height - height;
+          if (moveEvent.altKey) {
+            snapped.frame.x = centerX - width / 2;
+            snapped.frame.y = centerY - height / 2;
+          } else if (direction.includes("n")) snapped.frame.y = start.y + start.height - height;
         } else if (snapped.guides.y !== undefined) {
           const height = snapped.frame.height;
           const width = height * aspectRatio;
           snapped.frame.width = width;
-          if (direction.includes("w")) snapped.frame.x = start.x + start.width - width;
+          if (moveEvent.altKey) {
+            snapped.frame.x = centerX - width / 2;
+            snapped.frame.y = centerY - height / 2;
+          } else if (direction.includes("w")) snapped.frame.x = start.x + start.width - width;
         }
       }
       setSnapGuides(snapped.guides);

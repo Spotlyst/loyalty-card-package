@@ -674,7 +674,7 @@ export function LoyaltyCardEditor({
               <button
                 type="button"
                 aria-pressed={snapEnabled}
-                title="Toggle snapping (Shift + S). Hold Alt/Option while dragging to temporarily disable snapping."
+                title="Toggle snapping (Shift + S). Hold Alt/Option while dragging to temporarily disable snapping. Hold Alt/Option while resizing to resize from center."
                 className={snapEnabled ? "loyalty-snap-toggle loyalty-snap-toggle--active" : "loyalty-snap-toggle"}
                 onClick={() => setSnapEnabled((current) => !current)}
               >
@@ -859,11 +859,16 @@ export function LoyaltyCardEditor({
 
                     {selectedElement.type === "shape" ? (
                       <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                        <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, shape: event.target.value as "rect" | "circle" | "blob" } : element)}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
+                        <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, shape: event.target.value as "rect" | "circle" | "blob", radius: event.target.value === "circle" ? 999 : element.radius || 24 } : element)}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
                         <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Fill" /><input type="color" value={selectedElement.fill} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: event.target.value } : element)} /></label>
                         <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Stroke" /><input type="color" value={selectedElement.stroke || "#000000"} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: event.target.value } : element)} /></label>
                         <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
-                        <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Radius" /><input type="number" value={selectedElement.radius} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, radius: clampNumber(Number(event.target.value), 0, 200) } : element)} /></label>
+                        {selectedElement.shape === "rect" ? (
+                          <>
+                            <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Corner radius" /><input type="number" min="0" max="500" step="1" value={selectedElement.radius} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, radius: clampNumber(Number(event.target.value), 0, 500) } : element)} /></label>
+                            <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Corner radius slider" /><input type="range" min="0" max="500" step="1" value={clampNumber(selectedElement.radius, 0, 500)} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, radius: clampNumber(Number(event.target.value), 0, 500) } : element)} /></label>
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
 

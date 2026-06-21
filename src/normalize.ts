@@ -21,6 +21,7 @@ export function normalizeLoyaltyCardElement(element: LoyaltyCardElement): Loyalt
   const width = clampNumber(finiteNumber(element.width, 1), 1, LOYALTY_CARD_CANVAS_WIDTH * 3);
   const height = clampNumber(finiteNumber(element.height, 1), 1, LOYALTY_CARD_CANVAS_HEIGHT * 3);
   const rotation = clampNumber(finiteNumber(element.rotation, 0), -360, 360);
+  const radius = element.type === "shape" ? clampNumber(finiteNumber(element.radius, element.shape === "circle" ? 999 : 24), 0, 999) : undefined;
 
   return {
     ...element,
@@ -31,6 +32,7 @@ export function normalizeLoyaltyCardElement(element: LoyaltyCardElement): Loyalt
     rotation,
     opacity: clampNumber(finiteNumber(element.opacity, 1), 0, 1),
     zIndex: Math.max(1, Math.round(finiteNumber(element.zIndex, 1))),
+    ...(element.type === "shape" ? { radius } : {}),
   } as LoyaltyCardElement;
 }
 
