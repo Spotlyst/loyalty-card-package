@@ -585,8 +585,11 @@ export function LoyaltyCardDesignCanvas({
   };
 
   return (
-    <div className="loyalty-design-canvas-wrap">
-      <div ref={canvasRef} className="loyalty-design-canvas" onPointerDown={() => onSelectElement("")}>
+    <div className="loyalty-design-canvas-wrap" onPointerDown={() => onSelectElement("")}>
+      <div ref={canvasRef} className="loyalty-design-canvas" onPointerDown={(event) => {
+        event.stopPropagation();
+        onSelectElement("");
+      }}>
         <LoyaltyCardRenderer schema={schema} face={face} tokens={tokens} className="loyalty-design-canvas__surface" />
         <div className="loyalty-design-canvas__overlay" aria-label="Card editor overlay">
           {snapGuides.x !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--vertical" style={{ left: snapGuides.x * scale }} /> : null}
