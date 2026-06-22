@@ -1,4 +1,5 @@
 import { findLoyaltyCardFont, getLoyaltyCardFontCategoryLabel, legacyLoyaltyCardFontMap, loyaltyCardFontCatalog } from "../fonts.js";
+import type { LoyaltyCardFontCatalogItem } from "../fonts.js";
 import { normalizeLoyaltyCardLayerOrder, normalizeLoyaltyCardPreset } from "../normalize.js";
 import { LOYALTY_CARD_CANVAS_HEIGHT, LOYALTY_CARD_CANVAS_WIDTH, LOYALTY_CARD_FACE_KEYS } from "../schema.js";
 import {
@@ -67,6 +68,8 @@ const imageFilterPresets = {
   dramatic: { label: "Drama", filterBrightness: 0.92, filterContrast: 1.28, filterSaturation: 1.12, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
 } as const;
 type ImageFilterPresetKey = keyof typeof imageFilterPresets;
+const loadedPreviewFontKeys = new Set<string>();
+let previewFontPreconnectLoaded = false;
 
 export type LoyaltyCardEditorMetaContext = {
   record: LoyaltyCardPresetRecord;
@@ -187,6 +190,74 @@ function getTextFontWeight(element: Extract<LoyaltyCardElement, { type: "text" }
 
 function getTextFontStyle(element: Extract<LoyaltyCardElement, { type: "text" }>) {
   return element.fontStyle === "italic" ? "italic" : "normal";
+}
+
+function getFontPreviewWeight(font: LoyaltyCardFontCatalogItem) {
+  return font.weights.includes(400)
+    ? 400
+    : font.weights.reduce((nearest, weight) => (Math.abs(weight - 400) < Math.abs(nearest - 400) ? weight : nearest), font.weights[0] || 400);
+}
+
+function getGoogleFontCssUrl(font: LoyaltyCardFontCatalogItem) {
+  const family = font.family.trim().replace(/\s+/g, "+");
+  return `https://fonts.googleapis.com/css2?family=${family}:wght@${getFontPreviewWeight(font)}&display=swap`;
+}
+
+function ensurePreviewFontPreconnect() {
+  if (previewFontPreconnectLoaded || typeof document === "undefined") return;
+  previewFontPreconnectLoaded = true;
+  for (const href of ["https://fonts.googleapis.com", "https://fonts.gstatic.com"]) {
+    if (document.querySelector(`link[href="${href}"]`)) continue;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = href;
+    if (href.includes("gstatic")) link.crossOrigin = "anonymous";
+    document.head.appendChild(link);
+  }
+}
+
+function loadPreviewFont(font: LoyaltyCardFontCatalogItem) {
+  if (font.source !== "google" || typeof document === "undefined" || loadedPreviewFontKeys.has(font.key)) return;
+  ensurePreviewFontPreconnect();
+  loadedPreviewFontKeys.add(font.key);
+  const linkId = `loyalty-font-preview-${font.key}`;
+  if (document.getElementById(linkId)) return;
+  const link = document.createElement("link");
+  link.id = linkId;
+  link.rel = "stylesheet";
+  link.href = getGoogleFontCssUrl(font);
+  document.head.appendChild(link);
+}
+
+function FontBrowserItem({ font, isActive, onSelect }: { font: LoyaltyCardFontCatalogItem; isActive: boolean; onSelect: (fontKey: string) => void }) {
+  const itemRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const element = itemRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      loadPreviewFont(font);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadPreviewFont(font);
+        observer.disconnect();
+      }
+    }, { rootMargin: "180px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [font]);
+
+  useEffect(() => {
+    if (isActive) loadPreviewFont(font);
+  }, [font, isActive]);
+
+  return (
+    <button ref={itemRef} key={font.key} type="button" className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active" : "loyalty-font-browser-item"} onClick={() => onSelect(font.key)}>
+      <strong style={{ fontFamily: `"${font.family}", sans-serif`, fontWeight: getFontPreviewWeight(font) }}>{font.family}</strong>
+      <small>{font.category} · {font.license}</small>
+    </button>
+  );
 }
 
 function withFace(schema: LoyaltyCardDesignSchema, face: LoyaltyCardFaceKey, elements: LoyaltyCardElement[]) {
@@ -498,7 +569,7 @@ export function LoyaltyCardEditor({
         fontKey: font.key,
         fontFamily: font.family,
         fontUrl: "",
-        fontWeight: font.weights.includes(element.fontWeight) ? element.fontWeight : font.weights[Math.min(font.weights.length - 1, 3)] || 400,
+        fontWeight: font.weights.includes(element.fontWeight) ? element.fontWeight : getFontPreviewWeight(font),
         fontStyle: font.styles.includes(element.fontStyle || "normal") ? element.fontStyle : "normal",
       };
     });
@@ -886,7 +957,7 @@ export function LoyaltyCardEditor({
                 <button type="button" onClick={() => setInspectorPane("properties")}><ArrowLeft size={15} />Back</button>
                 <div>
                   <span>Font family</span>
-                  <strong>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
+                  <strong style={{ fontFamily: `"${selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}", sans-serif`, fontWeight: 400 }}>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
                 </div>
               </div>
               <label className="field"><span>Search fonts</span><input autoFocus value={fontSearch} onChange={(event) => setFontSearch(event.target.value)} /></label>
@@ -897,12 +968,7 @@ export function LoyaltyCardEditor({
                     <span>{getLoyaltyCardFontCategoryLabel(group.category)}</span>
                     {group.fonts.map((font) => {
                       const isActive = font.key === getTextFontKey(selectedElement);
-                      return (
-                        <button key={font.key} type="button" className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active" : "loyalty-font-browser-item"} onClick={() => applyCatalogFont(font.key)}>
-                          <strong style={{ fontFamily: `"${font.family}", sans-serif` }}>{font.family}</strong>
-                          <small>{font.category} · {font.license}</small>
-                        </button>
-                      );
+                      return <FontBrowserItem key={font.key} font={font} isActive={isActive} onSelect={applyCatalogFont} />;
                     })}
                   </div>
                 ))}
