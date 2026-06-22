@@ -319,13 +319,15 @@ function elementLabel(element: LoyaltyCardElement) {
 }
 
 function createElement(type: LoyaltyCardElement["type"], zIndex: number, options: { shape?: "rect" | "circle" | "blob" } = {}): LoyaltyCardElement {
+  const requestedShape = options.shape || "rect";
+  const shapeSize = requestedShape === "circle" ? { width: 160, height: 160 } : requestedShape === "blob" ? { width: 180, height: 180 } : { width: 260, height: 120 };
   const base = {
     id: `${type}-${Date.now()}`,
     type,
     x: 120,
     y: 120,
-    width: type === "line" ? 320 : 260,
-    height: type === "line" ? 8 : 120,
+    width: type === "line" ? 320 : type === "shape" ? shapeSize.width : 260,
+    height: type === "line" ? 8 : type === "shape" ? shapeSize.height : 120,
     rotation: 0,
     opacity: 1,
     zIndex,
@@ -340,8 +342,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
   }
 
   if (type === "shape") {
-    const shape = options.shape || "rect";
-    return { ...base, type, shape, fill: "#F97316", stroke: "", strokeWidth: 0, radius: shape === "circle" ? 999 : 24 };
+    return { ...base, type, shape: requestedShape, fill: "#F97316", stroke: "", strokeWidth: 0, radius: requestedShape === "circle" ? 999 : 24 };
   }
 
   if (type === "line") {
@@ -1130,7 +1131,12 @@ export function LoyaltyCardEditor({
 
                     {selectedElement.type === "shape" ? (
                       <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                        <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, shape: event.target.value as "rect" | "circle" | "blob", radius: event.target.value === "circle" ? 999 : element.radius || 24 } : element)}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
+                        <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => {
+                          if (element.type !== "shape") return element;
+                          const nextShape = event.target.value as "rect" | "circle" | "blob";
+                          const squareSize = Math.max(1, Math.min(element.width, element.height));
+                          return { ...element, shape: nextShape, width: nextShape === "rect" ? element.width : squareSize, height: nextShape === "rect" ? element.height : squareSize, radius: nextShape === "circle" ? 999 : element.radius || 24 };
+                        })}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
                         <ColorField label="Fill" value={selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: color } : element)} fallback="#F97316" />
                         <ColorField label="Stroke" value={selectedElement.stroke || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: color } : element)} fallback="#000000" />
                         <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
