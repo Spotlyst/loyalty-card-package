@@ -255,7 +255,6 @@ function FontBrowserItem({ font, isActive, onSelect }: { font: LoyaltyCardFontCa
   return (
     <button ref={itemRef} key={font.key} type="button" className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active" : "loyalty-font-browser-item"} onClick={() => onSelect(font.key)}>
       <strong style={{ fontFamily: `"${font.family}", sans-serif`, fontWeight: getFontPreviewWeight(font) }}>{font.family}</strong>
-      <small>{font.category} · {font.license}</small>
     </button>
   );
 }
