@@ -117,6 +117,7 @@ export type LoyaltyCardShapeElement = LoyaltyCardElementBase & {
   stroke: string;
   strokeWidth: number;
   radius: number;
+  lockAspectRatio?: boolean;
 };
 
 export type LoyaltyCardLineElement = LoyaltyCardElementBase & {

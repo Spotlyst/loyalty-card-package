@@ -399,7 +399,7 @@ export function LoyaltyCardDesignCanvas({
     const startClientX = event.clientX;
     const startClientY = event.clientY;
     const start = { ...element };
-    const locksToSquare = element.type === "shape" && (element.shape === "circle" || element.shape === "blob");
+    const locksToSquare = element.type === "shape" && (element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob"));
     const aspectRatio = locksToSquare ? 1 : element.type === "asset" && element.imageUrl ? element.width / element.height : null;
     const lockAspectRatio = Boolean(aspectRatio && (direction.length === 2 || locksToSquare));
     const centerX = start.x + start.width / 2;

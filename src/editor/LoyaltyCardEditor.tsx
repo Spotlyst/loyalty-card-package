@@ -342,7 +342,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
   }
 
   if (type === "shape") {
-    return { ...base, type, shape: requestedShape, fill: "#F97316", stroke: "", strokeWidth: 0, radius: requestedShape === "circle" ? 999 : 24 };
+    return { ...base, type, shape: requestedShape, fill: "#F97316", stroke: "", strokeWidth: 0, radius: requestedShape === "circle" ? 999 : 24, lockAspectRatio: requestedShape === "circle" || requestedShape === "blob" };
   }
 
   if (type === "line") {
@@ -1135,8 +1135,11 @@ export function LoyaltyCardEditor({
                           if (element.type !== "shape") return element;
                           const nextShape = event.target.value as "rect" | "circle" | "blob";
                           const squareSize = Math.max(1, Math.min(element.width, element.height));
-                          return { ...element, shape: nextShape, width: nextShape === "rect" ? element.width : squareSize, height: nextShape === "rect" ? element.height : squareSize, radius: nextShape === "circle" ? 999 : element.radius || 24 };
+                          const wasAspectShape = element.shape === "circle" || element.shape === "blob";
+                          const lockAspectRatio = nextShape === "rect" ? false : wasAspectShape ? element.lockAspectRatio ?? true : true;
+                          return { ...element, shape: nextShape, width: nextShape === "rect" ? element.width : squareSize, height: nextShape === "rect" ? element.height : squareSize, radius: nextShape === "circle" ? 999 : element.radius || 24, lockAspectRatio };
                         })}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
+                        <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Lock ratio" /><select value={(selectedElement.lockAspectRatio ?? (selectedElement.shape === "circle" || selectedElement.shape === "blob")) ? "true" : "false"} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, lockAspectRatio: event.target.value === "true" } : element)}><option value="true">Lock ratio</option><option value="false">Free resize</option></select></label>
                         <ColorField label="Fill" value={selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: color } : element)} fallback="#F97316" />
                         <ColorField label="Stroke" value={selectedElement.stroke || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: color } : element)} fallback="#000000" />
                         <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
