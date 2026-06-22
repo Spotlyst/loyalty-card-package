@@ -399,8 +399,9 @@ export function LoyaltyCardDesignCanvas({
     const startClientX = event.clientX;
     const startClientY = event.clientY;
     const start = { ...element };
-    const aspectRatio = element.type === "asset" && element.imageUrl ? element.width / element.height : null;
-    const lockAspectRatio = Boolean(aspectRatio && direction.length === 2);
+    const locksToSquare = element.type === "shape" && (element.shape === "circle" || element.shape === "blob");
+    const aspectRatio = locksToSquare ? 1 : element.type === "asset" && element.imageUrl ? element.width / element.height : null;
+    const lockAspectRatio = Boolean(aspectRatio && (direction.length === 2 || locksToSquare));
     const centerX = start.x + start.width / 2;
     const centerY = start.y + start.height / 2;
     const movingIds = new Set([element.id]);
@@ -446,6 +447,8 @@ export function LoyaltyCardDesignCanvas({
         } else {
           if (direction.includes("w")) nextX = start.x + start.width - nextWidth;
           if (direction.includes("n")) nextY = start.y + start.height - nextHeight;
+          if (!direction.includes("n") && !direction.includes("s")) nextY = centerY - nextHeight / 2;
+          if (!direction.includes("e") && !direction.includes("w")) nextX = centerX - nextWidth / 2;
         }
       }
 
@@ -460,6 +463,7 @@ export function LoyaltyCardDesignCanvas({
             snapped.frame.x = centerX - width / 2;
             snapped.frame.y = centerY - height / 2;
           } else if (direction.includes("n")) snapped.frame.y = start.y + start.height - height;
+          else if (!direction.includes("s")) snapped.frame.y = centerY - height / 2;
         } else if (snapped.guides.y !== undefined) {
           const height = snapped.frame.height;
           const width = height * aspectRatio;
@@ -468,6 +472,7 @@ export function LoyaltyCardDesignCanvas({
             snapped.frame.x = centerX - width / 2;
             snapped.frame.y = centerY - height / 2;
           } else if (direction.includes("w")) snapped.frame.x = start.x + start.width - width;
+          else if (!direction.includes("e")) snapped.frame.x = centerX - width / 2;
         }
       }
       setSnapGuides(snapped.guides);
