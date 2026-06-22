@@ -11,11 +11,17 @@ import {
   CircleIcon,
   Clock01Icon,
   ColorPickerIcon,
+  ColorsIcon,
   ColumnInsertIcon,
+  ContrastIcon,
+  BlurIcon,
+  DropletsIcon,
+  FilterResetIcon,
   GridTableIcon,
   ImageAdd01Icon,
   LetterSpacingIcon,
   Link01Icon,
+  Moon02Icon,
   Move01Icon,
   RadiusIcon,
   Resize01Icon,
@@ -24,6 +30,7 @@ import {
   ShapeCollectionIcon,
   SparklesIcon,
   StrokeCenterIcon,
+  Sun02Icon,
   TextBoldIcon,
   TextColorIcon,
   TextFontIcon,
@@ -53,6 +60,8 @@ const textTokens = ["{{venueName}}", "{{tierName}}", "{{rewardTitle}}", "{{rewar
 const fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 const fontCategories = ["sans", "serif", "display", "script", "handwritten", "condensed", "retro", "luxury", "poster", "multilingual"] as const;
 const HISTORY_LIMIT = 80;
+const EDITOR_THEME_STORAGE_KEY = "spotlyst.loyaltyCardEditor.theme";
+type EditorChromeTheme = "light" | "dark";
 const FACE_LABELS: Record<LoyaltyCardFaceKey, string> = {
   front: "Front",
   back: "Back",
@@ -120,6 +129,15 @@ function InspectorSection({ icon, label }: { icon: IconSvgElement; label: string
 
 function resolveMediaResultUrl(result: LoyaltyCardEditorMediaResult) {
   return typeof result === "string" ? result : result.cdnUrl || result.url || "";
+}
+
+function getStoredEditorTheme(): EditorChromeTheme {
+  if (typeof window === "undefined") return "light";
+  try {
+    return window.localStorage.getItem(EDITOR_THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
 }
 
 function ImageUrlField({ label, value, context, onChange, onUploadImage, onImportImageUrl }: { label: string; value: string; context: LoyaltyCardEditorImageContext; onChange: (value: string) => void; onUploadImage?: LoyaltyCardEditorProps["onUploadImage"]; onImportImageUrl?: LoyaltyCardEditorProps["onImportImageUrl"] }) {
@@ -453,6 +471,7 @@ export function LoyaltyCardEditor({
   const [leftPanelTab, setLeftPanelTab] = useState<"tools" | "layers">("tools");
   const [inspectorPane, setInspectorPane] = useState<"properties" | "fontPicker">("properties");
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [editorTheme, setEditorTheme] = useState<EditorChromeTheme>(() => getStoredEditorTheme());
   const [fontSearch, setFontSearch] = useState("");
   const undoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
   const redoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
@@ -465,6 +484,14 @@ export function LoyaltyCardEditor({
   const activeGroups = selectedPreset.designSchema.faces[activeFace]?.groups || [];
   const selectedElement = selectedElementIds.length === 1 ? activeElements.find((element) => element.id === selectedElementIds[0]) || null : null;
   const selectedGroupIds = activeGroups.filter((group) => group.elementIds.some((id) => selectedElementIds.includes(id))).map((group) => group.id);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(EDITOR_THEME_STORAGE_KEY, editorTheme);
+    } catch {
+      // Storage may be unavailable in private or embedded contexts.
+    }
+  }, [editorTheme]);
 
   useEffect(() => {
     if (lastSyncedIdRef.current !== value.id) {
@@ -834,12 +861,24 @@ export function LoyaltyCardEditor({
   }, [activeElements, activeFace, inspectorPane, selectedElementIds, value]);
 
   return (
-    <div className="loyalty-studio-page">
+    <div className={`loyalty-studio-page loyalty-studio-page--theme-${editorTheme}`}>
       <header className="loyalty-studio-topbar">
         <div>
           <h1>{title}</h1>
         </div>
-        <div className="loyalty-studio-actions">{actions}</div>
+        <div className="loyalty-studio-topbar-controls">
+          <button
+            type="button"
+            className="loyalty-theme-toggle"
+            aria-label={`Switch to ${editorTheme === "light" ? "dark" : "light"} editor theme`}
+            title={`Switch to ${editorTheme === "light" ? "dark" : "light"} editor theme`}
+            onClick={() => setEditorTheme((current) => current === "light" ? "dark" : "light")}
+          >
+            <HugeiconsIcon icon={editorTheme === "light" ? Moon02Icon : Sun02Icon} size={16} strokeWidth={1.9} aria-hidden="true" />
+            <span>{editorTheme === "light" ? "Dark" : "Light"}</span>
+          </button>
+          <div className="loyalty-studio-actions">{actions}</div>
+        </div>
       </header>
 
       {error ? <div className="loyalty-inspector-empty">{error}</div> : null}
@@ -1132,14 +1171,14 @@ export function LoyaltyCardEditor({
                             const preset = imageFilterPresets[presetKey] || imageFilterPresets.none;
                             return { ...element, filterPreset: presetKey, filterBrightness: preset.filterBrightness, filterContrast: preset.filterContrast, filterSaturation: preset.filterSaturation, filterHue: preset.filterHue, filterSepia: preset.filterSepia, filterGrayscale: preset.filterGrayscale, filterInvert: preset.filterInvert, filterBlur: preset.filterBlur };
                           })}>{Object.entries(imageFilterPresets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Brightness" /><input type="number" step="0.05" value={selectedElement.filterBrightness ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBrightness: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Contrast" /><input type="number" step="0.05" value={selectedElement.filterContrast ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterContrast: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Saturation" /><input type="number" step="0.05" value={selectedElement.filterSaturation ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterSaturation: clampNumber(Number(event.target.value), 0, 3) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={Sun02Icon} label="Brightness" /><input type="number" step="0.05" value={selectedElement.filterBrightness ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBrightness: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={ContrastIcon} label="Contrast" /><input type="number" step="0.05" value={selectedElement.filterContrast ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterContrast: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={DropletsIcon} label="Saturation" /><input type="number" step="0.05" value={selectedElement.filterSaturation ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterSaturation: clampNumber(Number(event.target.value), 0, 3) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={Rotate01Icon} label="Hue" /><input type="number" value={selectedElement.filterHue ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterHue: clampNumber(Number(event.target.value), -180, 180) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Sepia" /><input type="number" step="0.05" value={selectedElement.filterSepia ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterSepia: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={CircleIcon} label="Grayscale" /><input type="number" step="0.05" value={selectedElement.filterGrayscale ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterGrayscale: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={CircleIcon} label="Invert" /><input type="number" step="0.05" value={selectedElement.filterInvert ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterInvert: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={CircleIcon} label="Blur" /><input type="number" step="0.5" value={selectedElement.filterBlur ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBlur: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={ColorsIcon} label="Grayscale" /><input type="number" step="0.05" value={selectedElement.filterGrayscale ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterGrayscale: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={FilterResetIcon} label="Invert" /><input type="number" step="0.05" value={selectedElement.filterInvert ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterInvert: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={BlurIcon} label="Blur" /><input type="number" step="0.5" value={selectedElement.filterBlur ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBlur: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
                         </div>
                         <ColorField label="Tint" value={selectedElement.tint} onChange={(color) => updateSelectedElement((element) => element.type === "asset" ? { ...element, tint: color } : element)} fallback="#111827" />
                       </div>
