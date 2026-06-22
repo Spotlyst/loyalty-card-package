@@ -32,7 +32,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
-import { ArrowDown, ArrowLeft, ArrowUp, Circle, Grid3X3, Image, Minus, Shapes, Square, Trash2, Type } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Circle, Grid3X3, Image, Link, Minus, Shapes, Square, Trash2, Type, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
@@ -73,6 +73,15 @@ export type LoyaltyCardEditorMetaContext = {
   update: (updater: (record: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord) => void;
 };
 
+export type LoyaltyCardEditorImageContext = {
+  face: LoyaltyCardFaceKey;
+  field: "background.imageUrl" | "asset.imageUrl" | "stampGrid.emptyImageUrl" | "stampGrid.filledImageUrl";
+  elementId?: string;
+  currentUrl: string;
+};
+
+export type LoyaltyCardEditorMediaResult = string | { url?: string; cdnUrl?: string };
+
 export type LoyaltyCardEditorProps = {
   value: LoyaltyCardPresetRecord;
   onChange: (record: LoyaltyCardPresetRecord) => void;
@@ -84,6 +93,8 @@ export type LoyaltyCardEditorProps = {
   onSave?: () => void;
   toast?: string | null;
   error?: string | null;
+  onUploadImage?: (file: File, context: LoyaltyCardEditorImageContext) => Promise<LoyaltyCardEditorMediaResult>;
+  onImportImageUrl?: (url: string, context: LoyaltyCardEditorImageContext) => Promise<LoyaltyCardEditorMediaResult>;
 };
 
 function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
@@ -100,6 +111,68 @@ function InspectorSection({ icon, label }: { icon: IconSvgElement; label: string
     <div className="loyalty-inspector-section-title">
       <HugeiconsIcon icon={icon} size={14} strokeWidth={1.8} aria-hidden="true" />
       <span>{label}</span>
+    </div>
+  );
+}
+
+function resolveMediaResultUrl(result: LoyaltyCardEditorMediaResult) {
+  return typeof result === "string" ? result : result.cdnUrl || result.url || "";
+}
+
+function ImageUrlField({ label, value, context, onChange, onUploadImage, onImportImageUrl }: { label: string; value: string; context: LoyaltyCardEditorImageContext; onChange: (value: string) => void; onUploadImage?: LoyaltyCardEditorProps["onUploadImage"]; onImportImageUrl?: LoyaltyCardEditorProps["onImportImageUrl"] }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hasMediaActions = Boolean(onUploadImage || onImportImageUrl);
+
+  const applyResult = (result: LoyaltyCardEditorMediaResult) => {
+    const nextUrl = resolveMediaResultUrl(result);
+    if (nextUrl) onChange(nextUrl);
+  };
+
+  const handleUpload = async (file: File | undefined) => {
+    if (!file || !onUploadImage) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      applyResult(await onUploadImage(file, { ...context, currentUrl: value }));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed");
+    } finally {
+      setIsBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const handleImport = async () => {
+    const sourceUrl = value.trim();
+    if (!sourceUrl || !onImportImageUrl) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      applyResult(await onImportImageUrl(sourceUrl, { ...context, currentUrl: value }));
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Image import failed");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  return (
+    <div className="loyalty-image-url-field">
+      <label className="field field--icon"><IconLabel icon={Link01Icon} label={label} /><input type="url" placeholder="https://..." value={value} onChange={(event) => onChange(event.target.value)} /></label>
+      {hasMediaActions ? (
+        <div className="loyalty-image-url-actions">
+          {onUploadImage ? (
+            <>
+              <input ref={inputRef} className="loyalty-image-url-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => handleUpload(event.target.files?.[0])} />
+              <button type="button" disabled={isBusy} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />Upload</button>
+            </>
+          ) : null}
+          {onImportImageUrl ? <button type="button" disabled={isBusy || !value.trim()} onClick={handleImport}><Link size={14} />{isBusy ? "Working" : "Import URL"}</button> : null}
+        </div>
+      ) : null}
+      {error ? <small className="loyalty-image-url-error">{error}</small> : null}
     </div>
   );
 }
@@ -301,6 +374,8 @@ export function LoyaltyCardEditor({
   onSave,
   toast,
   error,
+  onUploadImage,
+  onImportImageUrl,
 }: LoyaltyCardEditorProps) {
   const faceKeys = faces && faces.length ? faces : [...LOYALTY_CARD_FACE_KEYS];
   const [activeFace, setActiveFace] = useState<LoyaltyCardFaceKey>(faceKeys[0]);
@@ -858,7 +933,7 @@ export function LoyaltyCardEditor({
                       ) : null}
                       {activeBackground.type === "image" ? (
                         <div className="loyalty-inspector-form">
-                          <label className="field"><span>Image URL</span><input type="url" placeholder="https://..." value={activeBackground.imageUrl} onChange={(event) => updateBackground({ ...activeBackground, imageUrl: event.target.value })} /></label>
+                          <ImageUrlField label="Image URL" value={activeBackground.imageUrl} context={{ face: activeFace, field: "background.imageUrl", currentUrl: activeBackground.imageUrl }} onChange={(imageUrl) => updateBackground({ ...activeBackground, imageUrl })} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
                           <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                             <ColorField label="Base color" value={activeBackground.color} onChange={(color) => updateBackground({ ...activeBackground, color })} fallback="#111827" />
                             <label className="field"><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={activeBackground.opacity ?? 1} onChange={(event) => updateBackground({ ...activeBackground, opacity: clampNumber(Number(event.target.value), 0, 1) })} /></label>
@@ -975,7 +1050,7 @@ export function LoyaltyCardEditor({
                       <div className="loyalty-inspector-form">
                         <InspectorSection icon={ImageAdd01Icon} label="Asset" />
                         <label className="field field--icon"><IconLabel icon={ImageAdd01Icon} label="Asset ID" /><input value={selectedElement.assetId} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, assetId: event.target.value } : element)} /></label>
-                        <label className="field field--icon"><IconLabel icon={Link01Icon} label="Image URL" /><input type="url" placeholder="https://..." value={selectedElement.imageUrl} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, imageUrl: event.target.value } : element)} /></label>
+                        <ImageUrlField label="Image URL" value={selectedElement.imageUrl} context={{ face: activeFace, field: "asset.imageUrl", elementId: selectedElement.id, currentUrl: selectedElement.imageUrl }} onChange={(imageUrl) => updateSelectedElement((element) => element.type === "asset" ? { ...element, imageUrl } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
                         <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Fit" /><select value={selectedElement.fit} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, fit: event.target.value as "cover" | "contain" | "crop", cropX: element.cropX || 0, cropY: element.cropY || 0, cropScale: element.cropScale || 1 } : element)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="crop">Crop</option></select></label>
                         {selectedElement.fit === "crop" ? (
                           <div className="loyalty-inspector-form loyalty-inspector-form--grid">
@@ -1035,7 +1110,7 @@ export function LoyaltyCardEditor({
                           <ColorField label="Empty fill" value={selectedElement.emptyFill || selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyFill: color, fill: color } : element)} fallback="#FFFFFF" />
                           <ColorField label="Empty stroke" value={selectedElement.emptyStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStroke: color, stroke: color } : element)} fallback="#111827" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Empty stroke width" /><input type="number" value={selectedElement.emptyStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Link01Icon} label="Empty image URL" /><input type="url" placeholder="https://..." value={selectedElement.emptyImageUrl || ""} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyImageUrl: event.target.value, emptyMode: event.target.value.trim() ? "image" : element.emptyMode } : element)} /></label>
+                          <ImageUrlField label="Empty image URL" value={selectedElement.emptyImageUrl || ""} context={{ face: activeFace, field: "stampGrid.emptyImageUrl", elementId: selectedElement.id, currentUrl: selectedElement.emptyImageUrl || "" }} onChange={(emptyImageUrl) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyImageUrl, emptyMode: emptyImageUrl.trim() ? "image" : element.emptyMode } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
                         </div>
 
                         <InspectorSection icon={SparklesIcon} label="Filled" />
@@ -1045,7 +1120,7 @@ export function LoyaltyCardEditor({
                           <ColorField label="Filled fill" value={selectedElement.filledFill || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledFill: color } : element)} fallback="#F97316" />
                           <ColorField label="Filled stroke" value={selectedElement.filledStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStroke: color } : element)} fallback="#F97316" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Filled stroke width" /><input type="number" value={selectedElement.filledStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Link01Icon} label="Filled image URL" /><input type="url" placeholder="https://..." value={selectedElement.filledImageUrl || ""} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledImageUrl: event.target.value, filledMode: event.target.value.trim() ? "image" : element.filledMode } : element)} /></label>
+                          <ImageUrlField label="Filled image URL" value={selectedElement.filledImageUrl || ""} context={{ face: activeFace, field: "stampGrid.filledImageUrl", elementId: selectedElement.id, currentUrl: selectedElement.filledImageUrl || "" }} onChange={(filledImageUrl) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledImageUrl, filledMode: filledImageUrl.trim() ? "image" : element.filledMode } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
                         </div>
 
                         <InspectorSection icon={Timer01Icon} label="Metadata & motion" />

@@ -799,6 +799,49 @@
   color: #7dd3fc;
 }
 
+.loyalty-image-url-field {
+  display: grid;
+  gap: 6px;
+}
+
+.loyalty-image-url-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-left: 28px;
+}
+
+.loyalty-image-url-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text-soft);
+  padding: 5px 9px;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.loyalty-image-url-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.loyalty-image-url-file {
+  display: none;
+}
+
+.loyalty-image-url-error {
+  padding-left: 28px;
+  color: #fecaca;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .loyalty-studio-inspector .field {
   min-width: 0;
   gap: 5px;

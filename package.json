@@ -1,6 +1,6 @@
 {
   "name": "@spotlyst/loyalty-card",
-  "version": "0.3.7",
+  "version": "0.3.10",
   "type": "module",
   "repository": {
     "type": "git",
@@ -13,13 +13,27 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
-      "react": ["dist/react/index.d.ts"],
-      "schema": ["dist/schema.d.ts"],
-      "normalize": ["dist/normalize.d.ts"],
-      "fixtures": ["dist/fixtures.d.ts"],
-      "fonts": ["dist/fonts.d.ts"],
-      "editor": ["dist/editor/index.d.ts"],
-      "*": ["dist/index.d.ts"]
+      "react": [
+        "dist/react/index.d.ts"
+      ],
+      "schema": [
+        "dist/schema.d.ts"
+      ],
+      "normalize": [
+        "dist/normalize.d.ts"
+      ],
+      "fixtures": [
+        "dist/fixtures.d.ts"
+      ],
+      "fonts": [
+        "dist/fonts.d.ts"
+      ],
+      "editor": [
+        "dist/editor/index.d.ts"
+      ],
+      "*": [
+        "dist/index.d.ts"
+      ]
     }
   },
   "exports": {
@@ -68,9 +82,15 @@
     "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
-    "@hugeicons/core-free-icons": { "optional": true },
-    "@hugeicons/react": { "optional": true },
-    "lucide-react": { "optional": true }
+    "@hugeicons/core-free-icons": {
+      "optional": true
+    },
+    "@hugeicons/react": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@hugeicons/core-free-icons": "^4.2.0",
