@@ -450,6 +450,14 @@
   transition: border-color 180ms var(--ease-out), background 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
 
+.loyalty-layer-list__item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 30px 30px;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+}
+
 .loyalty-preset-list__item:hover,
 .loyalty-layer-list__item:hover {
   transform: none;
@@ -477,6 +485,74 @@
   border-color: var(--accent-border);
   background: var(--accent-soft);
   color: var(--accent-active-text);
+}
+
+.loyalty-layer-list__item--hidden {
+  opacity: 0.62;
+}
+
+.loyalty-layer-list__item--locked {
+  border-style: dashed;
+}
+
+.loyalty-layer-list__drag,
+.loyalty-layer-list__select,
+.loyalty-layer-list__icon {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.loyalty-layer-list__drag,
+.loyalty-layer-list__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.loyalty-layer-list__drag {
+  cursor: grab;
+}
+
+.loyalty-layer-list__drag:active {
+  cursor: grabbing;
+}
+
+.loyalty-layer-list__select {
+  min-width: 0;
+  text-align: left;
+}
+
+.loyalty-layer-list__select:hover,
+.loyalty-layer-list__icon:hover,
+.loyalty-layer-list__drag:hover {
+  background: var(--control-hover);
+  color: var(--text-primary);
+}
+
+.loyalty-layer-list__name {
+  grid-column: 2 / -1;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.loyalty-layer-list__name:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .loyalty-studio-workspace {
@@ -794,6 +870,14 @@
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px rgba(26, 115, 232, 0.28);
   overflow: visible;
+}
+
+.loyalty-design-canvas__element--locked {
+  cursor: default;
+}
+
+.loyalty-design-canvas__element--locked.loyalty-design-canvas__element--selected {
+  border-style: dashed;
 }
 
 .loyalty-design-canvas__group {

@@ -26,6 +26,9 @@ export function normalizeLoyaltyCardElement(element: LoyaltyCardElement): Loyalt
 
   return {
     ...element,
+    name: typeof element.name === "string" ? element.name.trim().slice(0, 80) : undefined,
+    hidden: Boolean(element.hidden),
+    locked: Boolean(element.locked),
     x: clampNumber(finiteNumber(element.x, 0), -width, LOYALTY_CARD_CANVAS_WIDTH),
     y: clampNumber(finiteNumber(element.y, 0), -height, LOYALTY_CARD_CANVAS_HEIGHT),
     width,

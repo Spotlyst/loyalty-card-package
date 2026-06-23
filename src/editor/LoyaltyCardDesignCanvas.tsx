@@ -270,6 +270,7 @@ export function LoyaltyCardDesignCanvas({
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({});
   const [assetRatios, setAssetRatios] = useState<Record<string, number>>({});
   const activeFace = schema.faces[face] || schema.faces.front;
+  const visibleElements = activeFace.elements.filter((element) => !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeFace.elements.find((element) => element.id === selectedElementIds[0]) || null : null;
   const scale = canvasWidth / schema.canvas.width;
   const selectedGroups = (activeFace.groups || []).filter((group) => group.elementIds.length > 1 && group.elementIds.every((id) => selectedElementIds.includes(id)));
@@ -356,10 +357,14 @@ export function LoyaltyCardDesignCanvas({
     if (!isSelected || event.shiftKey || event.altKey) onSelectElement(element.id, event.shiftKey, event.altKey);
     const startClientX = event.clientX;
     const startClientY = event.clientY;
-    const dragIds = event.altKey ? [element.id] : isSelected || isGroupSelected ? selectedElementIds : groupElementIds;
+    const dragIds = (event.altKey ? [element.id] : isSelected || isGroupSelected ? selectedElementIds : groupElementIds).filter((id) => {
+      const item = activeFace.elements.find((candidate) => candidate.id === id);
+      return item && !item.locked && !item.hidden;
+    });
     const starts = activeFace.elements.filter((item) => dragIds.includes(item.id)).map((item) => ({ ...item }));
+    if (starts.length === 0) return;
     const movingIds = new Set(starts.map((item) => item.id));
-    const targets = snapTargets(schema, activeFace.elements, movingIds);
+    const targets = snapTargets(schema, visibleElements, movingIds);
 
     const handleMove = (moveEvent: PointerEvent) => {
       const dx = (moveEvent.clientX - startClientX) / scale;
@@ -406,7 +411,7 @@ export function LoyaltyCardDesignCanvas({
     const centerX = start.x + start.width / 2;
     const centerY = start.y + start.height / 2;
     const movingIds = new Set([element.id]);
-    const targets = snapTargets(schema, activeFace.elements, movingIds);
+    const targets = snapTargets(schema, visibleElements, movingIds);
 
     const handleMove = (moveEvent: PointerEvent) => {
       const dx = (moveEvent.clientX - startClientX) / scale;
@@ -541,7 +546,7 @@ export function LoyaltyCardDesignCanvas({
     event.stopPropagation();
     onBeginInteraction?.();
     if (!canvasRef.current) return;
-    const starts = activeFace.elements.filter((element) => elementIds.includes(element.id)).map((element) => ({ ...element }));
+    const starts = activeFace.elements.filter((element) => elementIds.includes(element.id) && !element.locked && !element.hidden).map((element) => ({ ...element }));
     if (starts.length === 0) return;
     const frame = groupFrame(starts);
     const center = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
@@ -581,7 +586,7 @@ export function LoyaltyCardDesignCanvas({
   };
 
   const renderGroupOverlay = (group: NonNullable<LoyaltyCardDesignSchema["faces"]["front"]["groups"]>[number]) => {
-    const elements = activeFace.elements.filter((element) => group.elementIds.includes(element.id));
+    const elements = activeFace.elements.filter((element) => group.elementIds.includes(element.id) && !element.hidden);
     if (elements.length === 0) return null;
     const frame = groupFrame(elements);
     return (
@@ -602,16 +607,16 @@ export function LoyaltyCardDesignCanvas({
         <div className="loyalty-design-canvas__overlay" aria-label="Card editor overlay">
           {snapGuides.x !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--vertical" style={{ left: snapGuides.x * scale }} /> : null}
           {snapGuides.y !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--horizontal" style={{ top: snapGuides.y * scale }} /> : null}
-          {activeFace.elements.map((element) => (
+          {visibleElements.map((element) => (
             <div
               key={element.id}
               role="button"
               tabIndex={0}
-              className={selectedElementIds.includes(element.id) && !groupSelectedElementIds.has(element.id) ? "loyalty-design-canvas__element loyalty-design-canvas__element--selected" : "loyalty-design-canvas__element"}
+              className={["loyalty-design-canvas__element", selectedElementIds.includes(element.id) && !groupSelectedElementIds.has(element.id) ? "loyalty-design-canvas__element--selected" : "", element.locked ? "loyalty-design-canvas__element--locked" : ""].filter(Boolean).join(" ")}
               style={overlayElementStyle(element, scale)}
-              onPointerDown={(event) => startDrag(event, element)}
+              onPointerDown={(event) => element.locked ? event.stopPropagation() : startDrag(event, element)}
             >
-              {renderHandles(element)}
+              {element.locked ? null : renderHandles(element)}
             </div>
           ))}
           {selectedGroups.map(renderGroupOverlay)}

@@ -60,6 +60,9 @@ export type LoyaltyCardBackground =
 export type LoyaltyCardElementBase = {
   id: string;
   type: (typeof LOYALTY_CARD_ELEMENT_TYPES)[number];
+  name?: string;
+  hidden?: boolean;
+  locked?: boolean;
   x: number;
   y: number;
   width: number;

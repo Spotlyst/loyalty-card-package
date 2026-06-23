@@ -386,9 +386,10 @@ export function LoyaltyCardRenderer({ schema, face, tokens = {}, className = "",
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(720);
   const activeFace = schema.faces[face] || schema.faces.front;
+  const visibleElements = activeFace.elements.filter((element) => !element.hidden);
   const scale = width / schema.canvas.width;
   const borderRadius = Math.max(0, schema.canvas.borderRadius ?? 32) * scale;
-  useLoyaltyCardFonts(activeFace.elements);
+  useLoyaltyCardFonts(visibleElements);
   useStampAnimationStyles();
 
   useEffect(() => {
@@ -419,7 +420,7 @@ export function LoyaltyCardRenderer({ schema, face, tokens = {}, className = "",
       }}
     >
       {renderBackgroundLayer(activeFace.background, schema)}
-      {activeFace.elements.map((element) => renderElement(element, schema, scale, tokens))}
+      {visibleElements.map((element) => renderElement(element, schema, scale, tokens))}
     </div>
   );
 }
