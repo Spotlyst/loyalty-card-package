@@ -432,10 +432,22 @@
 }
 
 .loyalty-preset-list,
-.loyalty-layer-list,
 .loyalty-inspector-form {
   display: grid;
   gap: 8px;
+}
+
+.loyalty-layer-list {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100dvh - 220px);
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.loyalty-layer-list::-webkit-scrollbar {
+  display: none;
 }
 
 .loyalty-preset-list__item,
@@ -455,7 +467,10 @@
   grid-template-columns: 24px minmax(0, 1fr) 30px 30px;
   gap: 6px;
   align-items: center;
+  height: 46px;
+  min-height: 46px;
   padding: 8px;
+  cursor: pointer;
 }
 
 .loyalty-preset-list__item:hover,
@@ -496,7 +511,6 @@
 }
 
 .loyalty-layer-list__drag,
-.loyalty-layer-list__select,
 .loyalty-layer-list__icon {
   border: 0;
   background: transparent;
@@ -523,12 +537,6 @@
   cursor: grabbing;
 }
 
-.loyalty-layer-list__select {
-  min-width: 0;
-  text-align: left;
-}
-
-.loyalty-layer-list__select:hover,
 .loyalty-layer-list__icon:hover,
 .loyalty-layer-list__drag:hover {
   background: var(--control-hover);
@@ -536,17 +544,22 @@
 }
 
 .loyalty-layer-list__name {
-  grid-column: 2 / -1;
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--stroke);
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: var(--text-primary);
-  padding: 6px 8px;
+  padding: 5px 7px;
   font: inherit;
-  font-size: 0.74rem;
-  font-weight: 500;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
 }
 
 .loyalty-layer-list__name:focus {

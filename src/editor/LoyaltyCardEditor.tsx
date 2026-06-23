@@ -1137,54 +1137,63 @@ export function LoyaltyCardEditor({
                 <strong>{activeElements.length}</strong>
               </div>
               <div className="loyalty-layer-list">
-                {activeElements.map((element, index) => ({ element, index })).sort((a, b) => b.element.zIndex - a.element.zIndex || a.index - b.index).map(({ element }) => (
-                  <div
-                    key={element.id}
-                    className={["loyalty-layer-list__item", selectedElementIds.includes(element.id) ? "loyalty-layer-list__item--active" : "", element.hidden ? "loyalty-layer-list__item--hidden" : "", element.locked ? "loyalty-layer-list__item--locked" : ""].filter(Boolean).join(" ")}
-                    draggable={!element.locked}
-                    onDragStart={(event) => {
-                      if (element.locked) return;
-                      setDraggedLayerId(element.id);
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      handleLayerDrop(element.id);
-                    }}
-                    onDragEnd={() => setDraggedLayerId(null)}
-                  >
-                    <button className="loyalty-layer-list__drag" type="button" aria-label="Drag layer" title={element.locked ? "Unlock layer to reorder" : "Drag layer"} disabled={Boolean(element.locked)}><GripVertical size={14} aria-hidden="true" /></button>
-                    <button className="loyalty-layer-list__select" type="button" onClick={(event) => handleSelectElement(element.id, event.shiftKey, event.altKey)}>
-                      <strong>{elementLabel(element)}</strong>
-                      <span>{element.type} · z {element.zIndex}</span>
-                    </button>
-                    <input
-                      className="loyalty-layer-list__name"
-                      defaultValue={element.name || ""}
-                      placeholder="Layer name"
-                      aria-label={`Rename ${elementLabel(element)}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                        if (event.key === "Escape") {
-                          event.currentTarget.value = element.name || "";
-                          event.currentTarget.blur();
-                        }
+                {activeElements.map((element, index) => ({ element, index })).sort((a, b) => b.element.zIndex - a.element.zIndex || a.index - b.index).map(({ element }) => {
+                  const displayName = elementLabel(element);
+                  return (
+                    <div
+                      key={element.id}
+                      className={["loyalty-layer-list__item", selectedElementIds.includes(element.id) ? "loyalty-layer-list__item--active" : "", element.hidden ? "loyalty-layer-list__item--hidden" : "", element.locked ? "loyalty-layer-list__item--locked" : ""].filter(Boolean).join(" ")}
+                      draggable={!element.locked}
+                      onClick={(event) => handleSelectElement(element.id, event.shiftKey, event.altKey)}
+                      onDragStart={(event) => {
+                        if (element.locked) return;
+                        setDraggedLayerId(element.id);
+                        event.dataTransfer.effectAllowed = "move";
                       }}
-                      onBlur={(event) => {
-                        const name = event.currentTarget.value.trim();
-                        if (name === (element.name || "")) return;
-                        updateLayerElement(element.id, (current) => ({ ...current, name }));
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
                       }}
-                    />
-                    <button className="loyalty-layer-list__icon" type="button" aria-pressed={!element.hidden} aria-label={element.hidden ? "Show layer" : "Hide layer"} title={element.hidden ? "Show layer" : "Hide layer"} onClick={() => updateLayerElement(element.id, (current) => ({ ...current, hidden: !current.hidden }))}>{element.hidden ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}</button>
-                    <button className="loyalty-layer-list__icon" type="button" aria-pressed={Boolean(element.locked)} aria-label={element.locked ? "Unlock layer" : "Lock layer"} title={element.locked ? "Unlock layer" : "Lock layer"} onClick={() => updateLayerElement(element.id, (current) => ({ ...current, locked: !current.locked }))}>{element.locked ? <Lock size={14} aria-hidden="true" /> : <Unlock size={14} aria-hidden="true" />}</button>
-                  </div>
-                ))}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        handleLayerDrop(element.id);
+                      }}
+                      onDragEnd={() => setDraggedLayerId(null)}
+                    >
+                      <button className="loyalty-layer-list__drag" type="button" aria-label="Drag layer" title={element.locked ? "Unlock layer to reorder" : "Drag layer"} disabled={Boolean(element.locked)} onClick={(event) => event.stopPropagation()}><GripVertical size={14} aria-hidden="true" /></button>
+                      <div
+                        className="loyalty-layer-list__name"
+                        contentEditable
+                        suppressContentEditableWarning
+                        role="textbox"
+                        tabIndex={0}
+                        aria-label={`Rename ${displayName}`}
+                        onClick={(event) => event.stopPropagation()}
+                        onFocus={() => handleSelectElement(element.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          }
+                          if (event.key === "Escape") {
+                            event.currentTarget.textContent = displayName;
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        onBlur={(event) => {
+                          const name = (event.currentTarget.textContent || "").trim();
+                          if (!element.name && name === displayName) return;
+                          if (name === (element.name || "")) return;
+                          updateLayerElement(element.id, (current) => ({ ...current, name }));
+                        }}
+                      >
+                        {displayName}
+                      </div>
+                      <button className="loyalty-layer-list__icon" type="button" aria-pressed={!element.hidden} aria-label={element.hidden ? "Show layer" : "Hide layer"} title={element.hidden ? "Show layer" : "Hide layer"} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, hidden: !current.hidden })); }}>{element.hidden ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}</button>
+                      <button className="loyalty-layer-list__icon" type="button" aria-pressed={Boolean(element.locked)} aria-label={element.locked ? "Unlock layer" : "Lock layer"} title={element.locked ? "Unlock layer" : "Lock layer"} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, locked: !current.locked })); }}>{element.locked ? <Lock size={14} aria-hidden="true" /> : <Unlock size={14} aria-hidden="true" />}</button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
