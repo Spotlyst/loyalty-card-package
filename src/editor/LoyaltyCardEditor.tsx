@@ -42,7 +42,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
-import { ArrowDown, ArrowLeft, ArrowUp, Circle, Grid3X3, Image, Link, Minus, Shapes, Square, Trash2, Type, UploadCloud } from "lucide-react";
+import { AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlignVerticalSpaceBetween, ArrowDown, ArrowLeft, ArrowUp, Circle, Crosshair, Grid3X3, Image, Link, Minus, Shapes, Square, Trash2, Type, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
@@ -1090,17 +1090,17 @@ export function LoyaltyCardEditor({
             </div>
             <div className="loyalty-studio-workspace-controls">
               <div className="loyalty-align-toolbar" aria-label="Alignment tools">
-                <button type="button" title="Align left" aria-label="Align left" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "start")}>L</button>
-                <button type="button" title="Align horizontal center" aria-label="Align horizontal center" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "center")}>HC</button>
-                <button type="button" title="Align right" aria-label="Align right" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "end")}>R</button>
+                <button type="button" title="Align left" aria-label="Align left" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "start")}><AlignHorizontalJustifyStart size={15} aria-hidden="true" /></button>
+                <button type="button" title="Align horizontal center" aria-label="Align horizontal center" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "center")}><AlignHorizontalJustifyCenter size={15} aria-hidden="true" /></button>
+                <button type="button" title="Align right" aria-label="Align right" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "end")}><AlignHorizontalJustifyEnd size={15} aria-hidden="true" /></button>
                 <span aria-hidden="true" />
-                <button type="button" title="Align top" aria-label="Align top" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "start")}>T</button>
-                <button type="button" title="Align vertical middle" aria-label="Align vertical middle" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "center")}>VM</button>
-                <button type="button" title="Align bottom" aria-label="Align bottom" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "end")}>B</button>
+                <button type="button" title="Align top" aria-label="Align top" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "start")}><AlignVerticalJustifyStart size={15} aria-hidden="true" /></button>
+                <button type="button" title="Align vertical middle" aria-label="Align vertical middle" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "center")}><AlignVerticalJustifyCenter size={15} aria-hidden="true" /></button>
+                <button type="button" title="Align bottom" aria-label="Align bottom" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "end")}><AlignVerticalJustifyEnd size={15} aria-hidden="true" /></button>
                 <span aria-hidden="true" />
-                <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("x")}>DH</button>
-                <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("y")}>DV</button>
-                <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" disabled={selectedElements.length === 0} onClick={() => handleCenterElementsOnCanvas("both")}>Canvas</button>
+                <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("x")}><AlignHorizontalSpaceBetween size={15} aria-hidden="true" /></button>
+                <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("y")}><AlignVerticalSpaceBetween size={15} aria-hidden="true" /></button>
+                <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" disabled={selectedElements.length === 0} onClick={() => handleCenterElementsOnCanvas("both")}><Crosshair size={15} aria-hidden="true" /></button>
               </div>
               <button
                 type="button"
