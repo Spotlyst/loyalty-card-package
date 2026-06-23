@@ -1089,19 +1089,21 @@ export function LoyaltyCardEditor({
               <h2>{selectedPreset.name}</h2>
             </div>
             <div className="loyalty-studio-workspace-controls">
-              <div className="loyalty-align-toolbar" aria-label="Alignment tools">
-                <button type="button" title="Align left" aria-label="Align left" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "start")}><AlignHorizontalJustifyStart size={15} aria-hidden="true" /></button>
-                <button type="button" title="Align horizontal center" aria-label="Align horizontal center" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "center")}><AlignHorizontalJustifyCenter size={15} aria-hidden="true" /></button>
-                <button type="button" title="Align right" aria-label="Align right" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "end")}><AlignHorizontalJustifyEnd size={15} aria-hidden="true" /></button>
-                <span aria-hidden="true" />
-                <button type="button" title="Align top" aria-label="Align top" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "start")}><AlignVerticalJustifyStart size={15} aria-hidden="true" /></button>
-                <button type="button" title="Align vertical middle" aria-label="Align vertical middle" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "center")}><AlignVerticalJustifyCenter size={15} aria-hidden="true" /></button>
-                <button type="button" title="Align bottom" aria-label="Align bottom" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "end")}><AlignVerticalJustifyEnd size={15} aria-hidden="true" /></button>
-                <span aria-hidden="true" />
-                <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("x")}><AlignHorizontalSpaceBetween size={15} aria-hidden="true" /></button>
-                <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("y")}><AlignVerticalSpaceBetween size={15} aria-hidden="true" /></button>
-                <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" disabled={selectedElements.length === 0} onClick={() => handleCenterElementsOnCanvas("both")}><Crosshair size={15} aria-hidden="true" /></button>
-              </div>
+              {selectedElements.length > 0 ? (
+                <div className="loyalty-align-toolbar" aria-label="Alignment tools">
+                  <button type="button" title="Align left" aria-label="Align left" onClick={() => handleAlignElements("x", "start")}><AlignHorizontalJustifyStart size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Align horizontal center" aria-label="Align horizontal center" onClick={() => handleAlignElements("x", "center")}><AlignHorizontalJustifyCenter size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Align right" aria-label="Align right" onClick={() => handleAlignElements("x", "end")}><AlignHorizontalJustifyEnd size={15} aria-hidden="true" /></button>
+                  <span aria-hidden="true" />
+                  <button type="button" title="Align top" aria-label="Align top" onClick={() => handleAlignElements("y", "start")}><AlignVerticalJustifyStart size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Align vertical middle" aria-label="Align vertical middle" onClick={() => handleAlignElements("y", "center")}><AlignVerticalJustifyCenter size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Align bottom" aria-label="Align bottom" onClick={() => handleAlignElements("y", "end")}><AlignVerticalJustifyEnd size={15} aria-hidden="true" /></button>
+                  <span aria-hidden="true" />
+                  <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("x")}><AlignHorizontalSpaceBetween size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("y")}><AlignVerticalSpaceBetween size={15} aria-hidden="true" /></button>
+                  <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" onClick={() => handleCenterElementsOnCanvas("both")}><Crosshair size={15} aria-hidden="true" /></button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 aria-pressed={snapEnabled}
