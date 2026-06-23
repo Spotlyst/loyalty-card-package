@@ -22,7 +22,7 @@ export function normalizeLoyaltyCardElement(element: LoyaltyCardElement): Loyalt
   const height = clampNumber(finiteNumber(element.height, 1), 1, LOYALTY_CARD_CANVAS_HEIGHT * 3);
   const rotation = clampNumber(finiteNumber(element.rotation, 0), -360, 360);
   const radius = element.type === "shape" ? clampNumber(finiteNumber(element.radius, element.shape === "circle" ? 999 : 24), 0, 999) : undefined;
-  const lockAspectRatio = element.type === "shape" ? element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob") : undefined;
+  const lockAspectRatio = element.type === "shape" ? element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob") : element.type === "asset" ? element.lockAspectRatio ?? true : undefined;
 
   return {
     ...element,
@@ -34,6 +34,7 @@ export function normalizeLoyaltyCardElement(element: LoyaltyCardElement): Loyalt
     opacity: clampNumber(finiteNumber(element.opacity, 1), 0, 1),
     zIndex: Math.max(1, Math.round(finiteNumber(element.zIndex, 1))),
     ...(element.type === "shape" ? { radius, lockAspectRatio } : {}),
+    ...(element.type === "asset" ? { lockAspectRatio } : {}),
   } as LoyaltyCardElement;
 }
 

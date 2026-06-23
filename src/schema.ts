@@ -107,6 +107,7 @@ export type LoyaltyCardAssetElement = LoyaltyCardElementBase & {
   filterGrayscale?: number;
   filterInvert?: number;
   filterBlur?: number;
+  lockAspectRatio?: boolean;
   tint: string;
 };
 

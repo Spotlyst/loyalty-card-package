@@ -400,8 +400,9 @@ export function LoyaltyCardDesignCanvas({
     const startClientY = event.clientY;
     const start = { ...element };
     const locksToSquare = element.type === "shape" && (element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob"));
-    const aspectRatio = locksToSquare ? 1 : element.type === "asset" && element.imageUrl ? element.width / element.height : null;
-    const lockAspectRatio = Boolean(aspectRatio && (direction.length === 2 || locksToSquare));
+    const locksAssetRatio = element.type === "asset" && (element.lockAspectRatio ?? true);
+    const aspectRatio = locksToSquare ? 1 : locksAssetRatio ? element.width / element.height : null;
+    const lockAspectRatio = Boolean(aspectRatio);
     const centerX = start.x + start.width / 2;
     const centerY = start.y + start.height / 2;
     const movingIds = new Set([element.id]);
@@ -436,7 +437,9 @@ export function LoyaltyCardDesignCanvas({
       }
 
       if (lockAspectRatio && aspectRatio) {
-        if (Math.abs(dx) >= Math.abs(dy)) {
+        const horizontalOnly = direction === "e" || direction === "w";
+        const verticalOnly = direction === "n" || direction === "s";
+        if (horizontalOnly || (!verticalOnly && Math.abs(dx) >= Math.abs(dy))) {
           nextHeight = nextWidth / aspectRatio;
         } else {
           nextWidth = nextHeight * aspectRatio;

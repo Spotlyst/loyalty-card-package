@@ -29,6 +29,8 @@ import {
   RowInsertIcon,
   ShapeCollectionIcon,
   SparklesIcon,
+  SquareLock01Icon,
+  SquareUnlock01Icon,
   StrokeCenterIcon,
   Sun02Icon,
   TextBoldIcon,
@@ -124,6 +126,15 @@ function InspectorSection({ icon, label }: { icon: IconSvgElement; label: string
       <HugeiconsIcon icon={icon} size={14} strokeWidth={1.8} aria-hidden="true" />
       <span>{label}</span>
     </div>
+  );
+}
+
+function RatioLockButton({ locked, onToggle }: { locked: boolean; onToggle: () => void }) {
+  return (
+    <button className={locked ? "loyalty-lock-toggle loyalty-lock-toggle--active" : "loyalty-lock-toggle"} type="button" aria-pressed={locked} onClick={onToggle}>
+      <HugeiconsIcon icon={locked ? SquareLock01Icon : SquareUnlock01Icon} size={15} strokeWidth={1.8} aria-hidden="true" />
+      <span>{locked ? "Lock ratio" : "Free resize"}</span>
+    </button>
   );
 }
 
@@ -338,7 +349,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
   }
 
   if (type === "asset") {
-    return { ...base, type, assetId: "image", imageUrl: "", fit: "contain", cropX: 0, cropY: 0, cropScale: 1, filterPreset: "none", filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0, tint: "#111827" };
+    return { ...base, type, assetId: "image", imageUrl: "", fit: "contain", cropX: 0, cropY: 0, cropScale: 1, filterPreset: "none", filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0, lockAspectRatio: true, tint: "#111827" };
   }
 
   if (type === "shape") {
@@ -1139,7 +1150,7 @@ export function LoyaltyCardEditor({
                           const lockAspectRatio = nextShape === "rect" ? false : wasAspectShape ? element.lockAspectRatio ?? true : true;
                           return { ...element, shape: nextShape, width: nextShape === "rect" ? element.width : squareSize, height: nextShape === "rect" ? element.height : squareSize, radius: nextShape === "circle" ? 999 : element.radius || 24, lockAspectRatio };
                         })}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
-                        <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Lock ratio" /><select value={(selectedElement.lockAspectRatio ?? (selectedElement.shape === "circle" || selectedElement.shape === "blob")) ? "true" : "false"} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, lockAspectRatio: event.target.value === "true" } : element)}><option value="true">Lock ratio</option><option value="false">Free resize</option></select></label>
+                        <div className="field field--icon"><IconLabel icon={Resize01Icon} label="Aspect ratio" /><RatioLockButton locked={selectedElement.lockAspectRatio ?? (selectedElement.shape === "circle" || selectedElement.shape === "blob")} onToggle={() => updateSelectedElement((element) => element.type === "shape" ? { ...element, lockAspectRatio: !(element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob")) } : element)} /></div>
                         <ColorField label="Fill" value={selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: color } : element)} fallback="#F97316" />
                         <ColorField label="Stroke" value={selectedElement.stroke || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: color } : element)} fallback="#000000" />
                         <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
@@ -1165,6 +1176,7 @@ export function LoyaltyCardEditor({
                         <label className="field field--icon"><IconLabel icon={ImageAdd01Icon} label="Asset ID" /><input value={selectedElement.assetId} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, assetId: event.target.value } : element)} /></label>
                         <ImageUrlField label="Image URL" value={selectedElement.imageUrl} context={{ face: activeFace, field: "asset.imageUrl", elementId: selectedElement.id, currentUrl: selectedElement.imageUrl }} onChange={(imageUrl) => updateSelectedElement((element) => element.type === "asset" ? { ...element, imageUrl } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
                         <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Fit" /><select value={selectedElement.fit} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, fit: event.target.value as "cover" | "contain" | "crop", cropX: element.cropX || 0, cropY: element.cropY || 0, cropScale: element.cropScale || 1 } : element)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="crop">Crop</option></select></label>
+                        <div className="field field--icon"><IconLabel icon={Resize01Icon} label="Aspect ratio" /><RatioLockButton locked={selectedElement.lockAspectRatio ?? true} onToggle={() => updateSelectedElement((element) => element.type === "asset" ? { ...element, lockAspectRatio: !(element.lockAspectRatio ?? true) } : element)} /></div>
                         {selectedElement.fit === "crop" ? (
                           <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                             <label className="field field--icon"><IconLabel icon={Move01Icon} label="Crop X" /><input type="number" value={selectedElement.cropX || 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, cropX: clampNumber(Number(event.target.value), -CANVAS_WIDTH, CANVAS_WIDTH) } : element)} /></label>

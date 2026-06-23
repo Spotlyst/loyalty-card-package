@@ -1043,9 +1043,54 @@
 
 .loyalty-studio-inspector input,
 .loyalty-studio-inspector select {
-  height: 32px;
+  height: 36px;
   color: var(--text-primary);
   -webkit-text-fill-color: var(--text-primary);
+}
+
+.loyalty-studio-inspector select {
+  padding-right: 28px;
+  line-height: 1.2;
+}
+
+.loyalty-lock-toggle {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  height: 36px;
+  min-width: 0;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: var(--control-bg);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.loyalty-lock-toggle:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+.loyalty-lock-toggle--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.loyalty-lock-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.loyalty-studio-inspector .field--icon > .loyalty-lock-toggle {
+  border-radius: 0 8px 8px 0;
 }
 
 .loyalty-studio-inspector select option,
