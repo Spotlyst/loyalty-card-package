@@ -463,6 +463,102 @@ function moveLayer(elements: LoyaltyCardElement[], selectedElementId: string, di
   return normalizeLoyaltyCardLayerOrder(elements.map((element) => ({ ...element, zIndex: zIndexById.get(element.id) || element.zIndex } as LoyaltyCardElement)));
 }
 
+function rotatedElementBounds(element: LoyaltyCardElement) {
+  const radians = ((element.rotation || 0) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const width = element.width * cos + element.height * sin;
+  const height = element.width * sin + element.height * cos;
+  const centerX = element.x + element.width / 2;
+  const centerY = element.y + element.height / 2;
+  return {
+    left: centerX - width / 2,
+    top: centerY - height / 2,
+    right: centerX + width / 2,
+    bottom: centerY + height / 2,
+    width,
+    height,
+    centerX,
+    centerY,
+  };
+}
+
+function elementFrameBounds(elements: LoyaltyCardElement[]) {
+  const bounds = elements.map(rotatedElementBounds);
+  const left = Math.min(...bounds.map((bound) => bound.left));
+  const top = Math.min(...bounds.map((bound) => bound.top));
+  const right = Math.max(...bounds.map((bound) => bound.right));
+  const bottom = Math.max(...bounds.map((bound) => bound.bottom));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+function elementsChanged(currentElements: LoyaltyCardElement[], nextElements: LoyaltyCardElement[]) {
+  return nextElements.some((element, index) => element.x !== currentElements[index]?.x || element.y !== currentElements[index]?.y);
+}
+
+function alignElements(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y", position: "start" | "center" | "end") {
+  const selected = elements.filter((element) => selectedIds.has(element.id));
+  if (selected.length === 0) return elements;
+  const bounds = selected.length === 1 ? { left: 0, top: 0, right: CANVAS_WIDTH, bottom: CANVAS_HEIGHT, width: CANVAS_WIDTH, height: CANVAS_HEIGHT } : elementFrameBounds(selected);
+
+  return elements.map((element) => {
+    if (!selectedIds.has(element.id)) return element;
+    const elementBounds = rotatedElementBounds(element);
+    if (axis === "x") {
+      const visualLeft = position === "start" ? bounds.left : position === "center" ? bounds.left + (bounds.width - elementBounds.width) / 2 : bounds.right - elementBounds.width;
+      const x = visualLeft + elementBounds.width / 2 - element.width / 2;
+      return { ...element, x: Math.round(x * 10) / 10 } as LoyaltyCardElement;
+    }
+    const visualTop = position === "start" ? bounds.top : position === "center" ? bounds.top + (bounds.height - elementBounds.height) / 2 : bounds.bottom - elementBounds.height;
+    const y = visualTop + elementBounds.height / 2 - element.height / 2;
+    return { ...element, y: Math.round(y * 10) / 10 } as LoyaltyCardElement;
+  });
+}
+
+function centerElementsOnCanvas(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y" | "both") {
+  const selected = elements.filter((element) => selectedIds.has(element.id));
+  if (selected.length === 0) return elements;
+  const bounds = elementFrameBounds(selected);
+  const dx = axis === "x" || axis === "both" ? CANVAS_WIDTH / 2 - (bounds.left + bounds.width / 2) : 0;
+  const dy = axis === "y" || axis === "both" ? CANVAS_HEIGHT / 2 - (bounds.top + bounds.height / 2) : 0;
+
+  return elements.map((element) => selectedIds.has(element.id) ? { ...element, x: Math.round((element.x + dx) * 10) / 10, y: Math.round((element.y + dy) * 10) / 10 } as LoyaltyCardElement : element);
+}
+
+function distributeElements(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y") {
+  const selected = elements.filter((element) => selectedIds.has(element.id));
+  if (selected.length < 3) return elements;
+  const sorted = [...selected].sort((a, b) => {
+    const aBounds = rotatedElementBounds(a);
+    const bBounds = rotatedElementBounds(b);
+    return axis === "x" ? aBounds.left - bBounds.left : aBounds.top - bBounds.top;
+  });
+  const firstBounds = rotatedElementBounds(sorted[0]);
+  const lastBounds = rotatedElementBounds(sorted[sorted.length - 1]);
+  const start = axis === "x" ? firstBounds.left : firstBounds.top;
+  const end = axis === "x" ? lastBounds.right : lastBounds.bottom;
+  const totalSize = sorted.reduce((sum, element) => {
+    const bounds = rotatedElementBounds(element);
+    return sum + (axis === "x" ? bounds.width : bounds.height);
+  }, 0);
+  const gap = (end - start - totalSize) / (sorted.length - 1);
+  const positions = new Map<string, number>();
+  let cursor = start;
+
+  sorted.forEach((element) => {
+    const bounds = rotatedElementBounds(element);
+    const position = axis === "x" ? cursor + bounds.width / 2 - element.width / 2 : cursor + bounds.height / 2 - element.height / 2;
+    positions.set(element.id, Math.round(position * 10) / 10);
+    cursor += (axis === "x" ? bounds.width : bounds.height) + gap;
+  });
+
+  return elements.map((element) => {
+    const position = positions.get(element.id);
+    if (position === undefined) return element;
+    return axis === "x" ? { ...element, x: position } as LoyaltyCardElement : { ...element, y: position } as LoyaltyCardElement;
+  });
+}
+
 export function LoyaltyCardEditor({
   value,
   onChange,
@@ -494,6 +590,7 @@ export function LoyaltyCardEditor({
   const activeElements = selectedPreset.designSchema.faces[activeFace]?.elements || [];
   const activeBackground = selectedPreset.designSchema.faces[activeFace]?.background || null;
   const activeGroups = selectedPreset.designSchema.faces[activeFace]?.groups || [];
+  const selectedElements = activeElements.filter((element) => selectedElementIds.includes(element.id));
   const selectedElement = selectedElementIds.length === 1 ? activeElements.find((element) => element.id === selectedElementIds[0]) || null : null;
   const selectedGroupIds = activeGroups.filter((group) => group.elementIds.some((id) => selectedElementIds.includes(id))).map((group) => group.id);
 
@@ -670,6 +767,39 @@ export function LoyaltyCardEditor({
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
       designSchema: withFace(preset.designSchema, activeFace, moveLayer(activeElements, selectedElement.id, direction)),
+    }));
+  };
+
+  const handleAlignElements = (axis: "x" | "y", position: "start" | "center" | "end") => {
+    if (selectedElements.length === 0) return;
+    const selectedIds = new Set(selectedElements.map((element) => element.id));
+    const nextElements = alignElements(activeElements, selectedIds, axis, position);
+    if (!elementsChanged(activeElements, nextElements)) return;
+    commit((preset) => normalizeLoyaltyCardPreset({
+      ...preset,
+      designSchema: withFace(preset.designSchema, activeFace, nextElements),
+    }));
+  };
+
+  const handleCenterElementsOnCanvas = (axis: "x" | "y" | "both") => {
+    if (selectedElements.length === 0) return;
+    const selectedIds = new Set(selectedElements.map((element) => element.id));
+    const nextElements = centerElementsOnCanvas(activeElements, selectedIds, axis);
+    if (!elementsChanged(activeElements, nextElements)) return;
+    commit((preset) => normalizeLoyaltyCardPreset({
+      ...preset,
+      designSchema: withFace(preset.designSchema, activeFace, nextElements),
+    }));
+  };
+
+  const handleDistributeElements = (axis: "x" | "y") => {
+    if (selectedElements.length < 3) return;
+    const selectedIds = new Set(selectedElements.map((element) => element.id));
+    const nextElements = distributeElements(activeElements, selectedIds, axis);
+    if (!elementsChanged(activeElements, nextElements)) return;
+    commit((preset) => normalizeLoyaltyCardPreset({
+      ...preset,
+      designSchema: withFace(preset.designSchema, activeFace, nextElements),
     }));
   };
 
@@ -959,6 +1089,19 @@ export function LoyaltyCardEditor({
               <h2>{selectedPreset.name}</h2>
             </div>
             <div className="loyalty-studio-workspace-controls">
+              <div className="loyalty-align-toolbar" aria-label="Alignment tools">
+                <button type="button" title="Align left" aria-label="Align left" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "start")}>L</button>
+                <button type="button" title="Align horizontal center" aria-label="Align horizontal center" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "center")}>HC</button>
+                <button type="button" title="Align right" aria-label="Align right" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("x", "end")}>R</button>
+                <span aria-hidden="true" />
+                <button type="button" title="Align top" aria-label="Align top" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "start")}>T</button>
+                <button type="button" title="Align vertical middle" aria-label="Align vertical middle" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "center")}>VM</button>
+                <button type="button" title="Align bottom" aria-label="Align bottom" disabled={selectedElements.length === 0} onClick={() => handleAlignElements("y", "end")}>B</button>
+                <span aria-hidden="true" />
+                <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("x")}>DH</button>
+                <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedElements.length < 3} onClick={() => handleDistributeElements("y")}>DV</button>
+                <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" disabled={selectedElements.length === 0} onClick={() => handleCenterElementsOnCanvas("both")}>Canvas</button>
+              </div>
               <button
                 type="button"
                 aria-pressed={snapEnabled}
