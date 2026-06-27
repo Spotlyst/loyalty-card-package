@@ -196,6 +196,30 @@ function elementFrame(element: LoyaltyCardElement, schema: LoyaltyCardDesignSche
   };
 }
 
+function clampStampSize(value: number) {
+  if (!Number.isFinite(value)) return 56;
+  return Math.min(220, Math.max(16, value));
+}
+
+function resolvedStampSize(element: LoyaltyCardStampGridElement) {
+  if (element.stampSize !== undefined) return clampStampSize(Number(element.stampSize));
+  const columns = Math.max(1, Math.min(12, Math.floor(Number(element.columns) || 1)));
+  const gap = Math.max(0, Number(element.gap) || 0);
+  return clampStampSize((element.width - gap * (columns - 1)) / columns);
+}
+
+function stampJustifyContent(align: LoyaltyCardStampGridElement["horizontalAlign"]): CSSProperties["justifyContent"] {
+  if (align === "left") return "flex-start";
+  if (align === "right") return "flex-end";
+  return "center";
+}
+
+function stampAlignContent(align: LoyaltyCardStampGridElement["verticalAlign"]): CSSProperties["alignContent"] {
+  if (align === "center") return "center";
+  if (align === "bottom") return "flex-end";
+  return "flex-start";
+}
+
 function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSchema, scale: number, tokens: LoyaltyCardTokens) {
   const frame = elementFrame(element, schema, scale);
 
@@ -293,19 +317,22 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
     const filled = Math.max(0, Math.min(count, Number(resolveLoyaltyCardToken(element.filledToken || "{{stampsCollected}}", tokens)) || 0));
     const stampData = resolveLoyaltyCardTokenValue(element.stampDataToken || "{{stamps}}", tokens);
     const stamps = Array.isArray(stampData) ? stampData : [];
+    const stampSize = resolvedStampSize(element);
     return (
       <div
         key={element.id}
         style={{
           ...frame,
           overflow: "visible",
-          display: "grid",
-          gridTemplateColumns: `repeat(${element.columns}, minmax(0, 1fr))`,
+          display: "flex",
+          flexWrap: "wrap",
           gap: element.gap * scale,
-          alignContent: "start",
+          justifyContent: stampJustifyContent(element.horizontalAlign),
+          alignContent: stampAlignContent(element.verticalAlign),
+          alignItems: "flex-start",
         }}
       >
-        {Array.from({ length: count }).map((_, index) => renderStampCell(element, index, index < filled, stamps[index], scale))}
+        {Array.from({ length: count }).map((_, index) => renderStampCell(element, index, index < filled, stamps[index], scale, stampSize))}
       </div>
     );
   }
@@ -377,11 +404,13 @@ function filledStampRotation(element: LoyaltyCardStampGridElement, index: number
   return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
 }
 
-function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number) {
+function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number) {
   const dateLabel = filled && element.showStampDates !== false ? getStampDateLabel(stamp, element.dateFormat || "short") : "";
   const label = dateLabel || (filled ? `Stamp ${index + 1} earned` : `Stamp ${index + 1} empty`);
   const baseStyle: CSSProperties = {
-    aspectRatio: "1 / 1",
+    width: stampSize * scale,
+    height: stampSize * scale,
+    flex: "0 0 auto",
     position: "relative",
     display: "block",
     overflow: "visible",

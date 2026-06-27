@@ -1042,6 +1042,136 @@
   aspect-ratio: 1 / 1;
 }
 
+.loyalty-stamp-layout-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 10px;
+  align-items: stretch;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  padding: 10px;
+}
+
+.loyalty-stamp-layout-control__preview {
+  min-height: 112px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.loyalty-stamp-layout-control__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  align-content: flex-start;
+  justify-content: center;
+}
+
+.loyalty-stamp-layout-control__dots--h-left { justify-content: flex-start; }
+.loyalty-stamp-layout-control__dots--h-center { justify-content: center; }
+.loyalty-stamp-layout-control__dots--h-right { justify-content: flex-end; }
+.loyalty-stamp-layout-control__dots--v-top { align-content: flex-start; }
+.loyalty-stamp-layout-control__dots--v-center { align-content: center; }
+.loyalty-stamp-layout-control__dots--v-bottom { align-content: flex-end; }
+
+.loyalty-stamp-layout-control__dots span {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 4px var(--accent-soft);
+}
+
+.loyalty-stamp-layout-control__tools {
+  display: grid;
+  gap: 8px;
+}
+
+.loyalty-stamp-stepper {
+  display: grid;
+  gap: 5px;
+}
+
+.loyalty-stamp-stepper span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.loyalty-stamp-stepper div {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 26px;
+  align-items: center;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--control-bg);
+  overflow: hidden;
+}
+
+.loyalty-stamp-stepper button,
+.loyalty-stamp-fit-button,
+.loyalty-stamp-align-grid__button {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.loyalty-stamp-stepper button {
+  min-height: 26px;
+}
+
+.loyalty-stamp-stepper strong {
+  text-align: center;
+  font-size: 0.74rem;
+}
+
+.loyalty-stamp-fit-button {
+  min-height: 30px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-active-text);
+  font-size: 0.72rem;
+}
+
+.loyalty-stamp-align-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.loyalty-stamp-align-grid__button {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.loyalty-stamp-align-grid__button span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.loyalty-stamp-align-grid__button--active {
+  border-color: var(--accent-border);
+  background: var(--accent);
+}
+
+.loyalty-stamp-align-grid__button--active span {
+  background: #ffffff;
+}
+
 .loyalty-inspector-form--grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 10px;

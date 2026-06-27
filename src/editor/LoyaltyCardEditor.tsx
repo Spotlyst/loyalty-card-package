@@ -26,7 +26,6 @@ import {
   RadiusIcon,
   Resize01Icon,
   Rotate01Icon,
-  RowInsertIcon,
   ShapeCollectionIcon,
   SparklesIcon,
   SquareLock01Icon,
@@ -52,6 +51,7 @@ import type {
   LoyaltyCardElement,
   LoyaltyCardFaceKey,
   LoyaltyCardPresetRecord,
+  LoyaltyCardStampGridElement,
   LoyaltyCardTokens,
 } from "../schema.js";
 
@@ -147,6 +147,45 @@ function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
       <HugeiconsIcon icon={icon} size={15} strokeWidth={1.8} aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </span>
+  );
+}
+
+function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGridElement; onChange: (next: Partial<LoyaltyCardStampGridElement>) => void }) {
+  const stampSize = Math.round(resolveStampSize(element));
+  const gap = Math.round(element.gap || 0);
+  const horizontalAlign = element.horizontalAlign || "center";
+  const verticalAlign = element.verticalAlign || "top";
+  const horizontalOptions = ["left", "center", "right"] as const;
+  const verticalOptions = ["top", "center", "bottom"] as const;
+
+  const stepSize = (delta: number) => onChange({ stampSize: clampNumber(stampSize + delta, 16, 220) });
+  const stepGap = (delta: number) => onChange({ gap: clampNumber(gap + delta, 0, 80) });
+
+  return (
+    <div className="loyalty-stamp-layout-control">
+      <div className="loyalty-stamp-layout-control__preview" aria-hidden="true">
+        <div className={`loyalty-stamp-layout-control__dots loyalty-stamp-layout-control__dots--h-${horizontalAlign} loyalty-stamp-layout-control__dots--v-${verticalAlign}`}>
+          {Array.from({ length: Math.min(8, Math.max(1, element.count || 6)) }).map((_, index) => <span key={index} />)}
+        </div>
+      </div>
+      <div className="loyalty-stamp-layout-control__tools">
+        <div className="loyalty-stamp-stepper">
+          <span>Stamp size</span>
+          <div><button type="button" onClick={() => stepSize(-4)}>-</button><strong>{stampSize}</strong><button type="button" onClick={() => stepSize(4)}>+</button></div>
+        </div>
+        <div className="loyalty-stamp-stepper">
+          <span>Gap</span>
+          <div><button type="button" onClick={() => stepGap(-2)}>-</button><strong>{gap}</strong><button type="button" onClick={() => stepGap(2)}>+</button></div>
+        </div>
+        <button type="button" className="loyalty-stamp-fit-button" onClick={() => onChange({ stampSize: fitStampSize(element) })}>Fit all</button>
+      </div>
+      <div className="loyalty-stamp-align-grid" aria-label="Stamp grid alignment">
+        {verticalOptions.flatMap((vertical) => horizontalOptions.map((horizontal) => {
+          const active = horizontalAlign === horizontal && verticalAlign === vertical;
+          return <button key={`${vertical}-${horizontal}`} type="button" className={active ? "loyalty-stamp-align-grid__button loyalty-stamp-align-grid__button--active" : "loyalty-stamp-align-grid__button"} aria-label={`Align ${vertical} ${horizontal}`} aria-pressed={active} onClick={() => onChange({ horizontalAlign: horizontal, verticalAlign: vertical })}><span /></button>;
+        }))}
+      </div>
+    </div>
   );
 }
 
@@ -585,12 +624,33 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
     return { ...base, type, color: "#111827", strokeWidth: 4 };
   }
 
-  return { ...base, type, width: 300, height: 220, columns: 5, count: 10, countToken: "{{stampsRequired}}", filledToken: "{{stampsCollected}}", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", emptyScale: 1, filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
+  return { ...base, type, width: 300, height: 220, columns: 5, count: 10, countToken: "{{stampsRequired}}", filledToken: "{{stampsCollected}}", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", emptyScale: 1, filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
 }
 
 function clampNumber(value: number, min: number, max: number) {
   if (Number.isNaN(value)) return min;
   return Math.min(max, Math.max(min, value));
+}
+
+function resolveStampSize(element: LoyaltyCardStampGridElement) {
+  if (element.stampSize !== undefined) return clampNumber(Number(element.stampSize), 16, 220);
+  const columns = clampNumber(Math.floor(Number(element.columns) || 1), 1, 12);
+  const gap = clampNumber(Number(element.gap) || 0, 0, 80);
+  return clampNumber((element.width - gap * (columns - 1)) / columns, 16, 220);
+}
+
+function fitStampSize(element: LoyaltyCardStampGridElement) {
+  const count = clampNumber(Math.floor(Number(element.count) || 10), 1, 100);
+  const gap = clampNumber(Number(element.gap) || 0, 0, 80);
+  let best = 16;
+  for (let columns = 1; columns <= count; columns += 1) {
+    const rows = Math.ceil(count / columns);
+    const widthSize = (element.width - gap * (columns - 1)) / columns;
+    const heightSize = (element.height - gap * (rows - 1)) / rows;
+    const size = Math.min(widthSize, heightSize);
+    if (size > best) best = size;
+  }
+  return Math.round(clampNumber(best, 16, 220));
 }
 
 function clampColorAlpha(value: number) {
@@ -1807,20 +1867,12 @@ export function LoyaltyCardEditor({
                     {selectedElement.type === "stampGrid" ? (
                       <div className="loyalty-inspector-form">
                         <InspectorSection icon={GridTableIcon} label="Stamp grid" />
+                        <StampLayoutControl element={selectedElement} onChange={(next) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, ...next } : element)} />
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={RowInsertIcon} label="Rows" /><input type="number" value={Math.max(1, Math.ceil(selectedElement.count / selectedElement.columns))} onChange={(event) => updateSelectedElement((element) => {
-                            if (element.type !== "stampGrid") return element;
-                            const rows = clampNumber(Number(event.target.value), 1, 12);
-                            const count = clampNumber(rows * element.columns, 1, 100);
-                            return { ...element, count };
-                          })} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColumnInsertIcon} label="Columns" /><input type="number" value={selectedElement.columns} onChange={(event) => updateSelectedElement((element) => {
-                            if (element.type !== "stampGrid") return element;
-                            const columns = clampNumber(Number(event.target.value), 1, 12);
-                            return { ...element, columns };
-                          })} /></label>
+                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Stamp size" /><input type="number" min="16" max="220" value={Math.round(resolveStampSize(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, stampSize: clampNumber(Number(event.target.value), 16, 220) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Preview count" /><input type="number" value={selectedElement.count} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, count: clampNumber(Number(event.target.value), 1, 100) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Gap" /><input type="number" value={selectedElement.gap} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, gap: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={ColumnInsertIcon} label="Legacy columns" /><input type="number" value={selectedElement.columns} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, columns: clampNumber(Number(event.target.value), 1, 12) } : element)} /></label>
                         </div>
 
                         <label className="field field--icon"><IconLabel icon={TypeCursorIcon} label="Total token" /><input value={selectedElement.countToken} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, countToken: event.target.value } : element)} /></label>
