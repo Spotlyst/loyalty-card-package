@@ -162,6 +162,8 @@ export type LoyaltyCardStampGridElement = LoyaltyCardElementBase & {
   filledComposition?: LoyaltyCardStampFilledComposition;
   filledRandomRotation?: number;
   stampSize?: number;
+  previewFilledCount?: number;
+  autoFitContainer?: boolean;
   horizontalAlign?: LoyaltyCardStampHorizontalAlign;
   verticalAlign?: LoyaltyCardStampVerticalAlign;
   imageFit?: LoyaltyCardStampImageFit;

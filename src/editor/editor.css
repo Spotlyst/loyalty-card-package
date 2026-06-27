@@ -1044,8 +1044,7 @@
 
 .loyalty-stamp-layout-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px;
-  gap: 10px;
+  gap: 12px;
   align-items: stretch;
   border: 1px solid var(--stroke);
   border-radius: 14px;
@@ -1054,11 +1053,18 @@
 }
 
 .loyalty-stamp-layout-control__preview {
-  min-height: 112px;
+  min-height: 136px;
+  max-height: 220px;
+  overflow: auto;
   border: 1px solid var(--stroke);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px;
+}
+
+.loyalty-stamp-layout-control__preview--overflow {
+  border-color: rgb(245 158 11 / 0.8);
+  box-shadow: 0 0 0 2px rgb(245 158 11 / 0.16);
 }
 
 .loyalty-stamp-layout-control__dots {
@@ -1079,16 +1085,22 @@
 .loyalty-stamp-layout-control__dots--v-bottom { align-content: flex-end; }
 
 .loyalty-stamp-layout-control__dots span {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border: 1px solid var(--accent-border);
   border-radius: 999px;
   background: var(--surface);
   box-shadow: inset 0 0 0 4px var(--accent-soft);
 }
 
+.loyalty-stamp-layout-control__dots .loyalty-stamp-layout-control__dot--filled {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 4px rgb(255 255 255 / 0.24);
+}
+
 .loyalty-stamp-layout-control__tools {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1140,8 +1152,29 @@
   font-size: 0.72rem;
 }
 
+.loyalty-stamp-fit-button--active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.loyalty-stamp-overflow-note {
+  margin-top: -4px;
+  border: 1px solid rgb(245 158 11 / 0.28);
+  border-radius: 10px;
+  background: rgb(245 158 11 / 0.12);
+  color: #92400e;
+  padding: 7px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.loyalty-stamp-fit-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .loyalty-stamp-align-grid {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
@@ -1176,6 +1209,33 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 10px;
   row-gap: 10px;
+}
+
+.loyalty-advanced-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 10px;
+}
+
+.loyalty-advanced-section summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.loyalty-advanced-section p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.loyalty-advanced-section .field {
+  margin-top: 8px;
 }
 
 .loyalty-inspector-section-title {

@@ -314,9 +314,9 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
 
   if (element.type === "stampGrid") {
     const count = Math.max(1, Math.min(100, Number(resolveLoyaltyCardToken(element.countToken, tokens)) || element.count || 10));
-    const filled = Math.max(0, Math.min(count, Number(resolveLoyaltyCardToken(element.filledToken || "{{stampsCollected}}", tokens)) || 0));
     const stampData = resolveLoyaltyCardTokenValue(element.stampDataToken || "{{stamps}}", tokens);
     const stamps = Array.isArray(stampData) ? stampData : [];
+    const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
     const stampSize = resolvedStampSize(element);
     return (
       <div
