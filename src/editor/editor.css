@@ -1126,7 +1126,6 @@
 }
 
 .loyalty-stamp-stepper button,
-.loyalty-stamp-fit-button,
 .loyalty-stamp-align-grid__button {
   border: 0;
   background: transparent;
@@ -1141,37 +1140,6 @@
 .loyalty-stamp-stepper strong {
   text-align: center;
   font-size: 0.74rem;
-}
-
-.loyalty-stamp-fit-button {
-  min-height: 30px;
-  border: 1px solid var(--accent-border);
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-active-text);
-  font-size: 0.72rem;
-}
-
-.loyalty-stamp-fit-button--active {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-.loyalty-stamp-overflow-note {
-  margin-top: -4px;
-  border: 1px solid rgb(245 158 11 / 0.28);
-  border-radius: 10px;
-  background: rgb(245 158 11 / 0.12);
-  color: #92400e;
-  padding: 7px 9px;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.loyalty-stamp-fit-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
 }
 
 .loyalty-stamp-align-grid {

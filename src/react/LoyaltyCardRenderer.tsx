@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { findLoyaltyCardFont, legacyLoyaltyCardFontMap } from "../fonts.js";
 import { resolveLoyaltyCardToken, resolveLoyaltyCardTokenValue, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardTokens } from "../schema.js";
+import { resolveFittedStampGridLayout } from "../stampGridLayout.js";
 
 export type LoyaltyCardRendererProps = {
   schema: LoyaltyCardDesignSchema;
@@ -196,32 +197,16 @@ function elementFrame(element: LoyaltyCardElement, schema: LoyaltyCardDesignSche
   };
 }
 
-function clampStampSize(value: number) {
-  if (!Number.isFinite(value)) return 56;
-  return Math.min(220, Math.max(16, value));
-}
-
-function resolvedStampSize(element: LoyaltyCardStampGridElement) {
-  if (element.stampSize !== undefined) return clampStampSize(Number(element.stampSize));
-  const columns = Math.max(1, Math.min(12, Math.floor(Number(element.columns) || 1)));
-  const gap = Math.max(0, Number(element.gap) || 0);
-  return clampStampSize((element.width - gap * (columns - 1)) / columns);
-}
-
-function resolvedStampColumns(element: LoyaltyCardStampGridElement, count: number) {
-  return Math.max(1, Math.min(count, Math.min(12, Math.floor(Number(element.columns) || 1))));
-}
-
-function stampJustifyContent(align: LoyaltyCardStampGridElement["horizontalAlign"]): CSSProperties["justifyContent"] {
+function stampGridAlignItems(align: LoyaltyCardStampGridElement["horizontalAlign"]): CSSProperties["alignItems"] {
   if (align === "left") return "flex-start";
   if (align === "right") return "flex-end";
   return "center";
 }
 
-function stampAlignContent(align: LoyaltyCardStampGridElement["verticalAlign"]): CSSProperties["alignContent"] {
-  if (align === "center") return "center";
+function stampGridJustifyContent(align: LoyaltyCardStampGridElement["verticalAlign"]): CSSProperties["justifyContent"] {
+  if ((align || "top") === "top") return "flex-start";
   if (align === "bottom") return "flex-end";
-  return "flex-start";
+  return "center";
 }
 
 function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSchema, scale: number, tokens: LoyaltyCardTokens) {
@@ -321,24 +306,40 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
     const stampData = resolveLoyaltyCardTokenValue(element.stampDataToken || "{{stamps}}", tokens);
     const stamps = Array.isArray(stampData) ? stampData : [];
     const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
-    const stampSize = resolvedStampSize(element);
-    const columns = resolvedStampColumns(element, count);
+    const stampLayout = resolveFittedStampGridLayout(element, count);
+    const rows = Array.from({ length: stampLayout.rows }).map((_, rowIndex) => {
+      const startIndex = rowIndex * stampLayout.columns;
+      const rowCount = Math.min(stampLayout.columns, count - startIndex);
+      return Array.from({ length: Math.max(0, rowCount) }).map((__, columnIndex) => startIndex + columnIndex);
+    });
     return (
       <div
         key={element.id}
         style={{
           ...frame,
-          overflow: "visible",
-          display: "grid",
-          gridTemplateColumns: `repeat(${columns}, ${stampSize * scale}px)`,
-          gridAutoRows: `${stampSize * scale}px`,
-          gap: element.gap * scale,
-          justifyContent: stampJustifyContent(element.horizontalAlign),
-          alignContent: stampAlignContent(element.verticalAlign),
-          alignItems: "flex-start",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: stampGridAlignItems(element.horizontalAlign),
+          justifyContent: stampGridJustifyContent(element.verticalAlign),
         }}
       >
-        {Array.from({ length: count }).map((_, index) => renderStampCell(element, index, index < filled, stamps[index], scale, stampSize))}
+        <div
+          aria-hidden="true"
+          style={{
+            width: stampLayout.contentWidth * scale,
+            height: stampLayout.contentHeight * scale,
+            display: "flex",
+            flexDirection: "column",
+            gap: stampLayout.gap * scale,
+          }}
+        >
+          {rows.map((row, rowIndex) => (
+            <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: "center", gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
+              {row.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -410,6 +411,26 @@ function filledStampRotation(element: LoyaltyCardStampGridElement, index: number
   return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
 }
 
+function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number) {
+  return (
+    <span
+      key={`${element.id}-${index}`}
+      aria-hidden="true"
+      style={{
+        width: cellSize * scale,
+        height: cellSize * scale,
+        display: "grid",
+        placeItems: "center",
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "visible",
+      }}
+    >
+      {renderStampCell(element, index, filled, stamp, scale, stampSize)}
+    </span>
+  );
+}
+
 function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number) {
   const dateLabel = filled && element.showStampDates !== false ? getStampDateLabel(stamp, element.dateFormat || "short") : "";
   const label = dateLabel || (filled ? `Stamp ${index + 1} earned` : `Stamp ${index + 1} empty`);
@@ -449,7 +470,7 @@ function renderStampCell(element: LoyaltyCardStampGridElement, index: number, fi
       inset: 0,
       boxSizing: "border-box",
       zIndex,
-      overflow: "hidden",
+      overflow: "visible",
       border: hasPresetImage ? "none" : `${Math.max(1, layer.strokeWidth * scale)}px solid ${layer.stroke}`,
       background: hasPresetImage ? "transparent" : layer.fill,
       borderRadius: hasPresetImage ? 0 : stampBorderRadius(layer.shape, scale),

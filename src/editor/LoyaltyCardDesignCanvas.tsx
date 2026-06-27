@@ -1,7 +1,7 @@
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import type { LoyaltyCardDesignSchema, LoyaltyCardElement, LoyaltyCardFaceKey, LoyaltyCardStampGridElement, LoyaltyCardTokens } from "../schema.js";
+import type { LoyaltyCardDesignSchema, LoyaltyCardElement, LoyaltyCardFaceKey, LoyaltyCardTokens } from "../schema.js";
 
 type LoyaltyCardDesignCanvasProps = {
   schema: LoyaltyCardDesignSchema;
@@ -32,47 +32,6 @@ function finiteNumber(value: number, fallback: number) {
 
 function roundUnit(value: number) {
   return Math.round(value * 10) / 10;
-}
-
-function clampStampSize(value: number) {
-  if (!Number.isFinite(value)) return 56;
-  return Math.min(220, Math.max(16, value));
-}
-
-function resolvedStampSize(element: LoyaltyCardStampGridElement) {
-  if (element.stampSize !== undefined) return clampStampSize(Number(element.stampSize));
-  const columns = Math.max(1, Math.min(12, Math.floor(Number(element.columns) || 1)));
-  const gap = Math.max(0, Number(element.gap) || 0);
-  return clampStampSize((element.width - gap * (columns - 1)) / columns);
-}
-
-function stampGridMinimumSize(element: LoyaltyCardStampGridElement) {
-  const count = Math.max(1, Math.min(100, Math.floor(Number(element.count) || 1)));
-  const columns = Math.max(1, Math.min(count, Math.min(12, Math.floor(Number(element.columns) || 1))));
-  const rows = Math.ceil(count / columns);
-  const stampSize = resolvedStampSize(element);
-  const gap = Math.max(0, Number(element.gap) || 0);
-  return {
-    width: columns * stampSize + Math.max(0, columns - 1) * gap,
-    height: rows * stampSize + Math.max(0, rows - 1) * gap,
-  };
-}
-
-function enforceStampGridMinimumFrame(element: LoyaltyCardElement, frame: Frame, direction: ResizeDirection, centered: boolean, centerX: number, centerY: number): Frame {
-  if (element.type !== "stampGrid") return frame;
-  const minimum = stampGridMinimumSize(element);
-  const next = { ...frame };
-  if (next.width < minimum.width) {
-    if (centered) next.x = centerX - minimum.width / 2;
-    else if (direction.includes("w")) next.x = frame.x + frame.width - minimum.width;
-    next.width = minimum.width;
-  }
-  if (next.height < minimum.height) {
-    if (centered) next.y = centerY - minimum.height / 2;
-    else if (direction.includes("n")) next.y = frame.y + frame.height - minimum.height;
-    next.height = minimum.height;
-  }
-  return next;
 }
 
 function rotatedBounds(width: number, height: number, rotation: number) {
@@ -524,9 +483,8 @@ export function LoyaltyCardDesignCanvas({
           else if (!direction.includes("e")) snapped.frame.x = centerX - width / 2;
         }
       }
-      const minimumFrame = enforceStampGridMinimumFrame(element, snapped.frame, direction, moveEvent.altKey, centerX, centerY);
       setSnapGuides(snapped.guides);
-      commitFrame(element, constrainFrame(minimumFrame.x, minimumFrame.y, minimumFrame.width, minimumFrame.height, minimumFrame.rotation, schema));
+      commitFrame(element, constrainFrame(snapped.frame.x, snapped.frame.y, snapped.frame.width, snapped.frame.height, snapped.frame.rotation, schema));
     };
 
     const handleEnd = () => {
