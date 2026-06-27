@@ -208,6 +208,10 @@ function resolvedStampSize(element: LoyaltyCardStampGridElement) {
   return clampStampSize((element.width - gap * (columns - 1)) / columns);
 }
 
+function resolvedStampColumns(element: LoyaltyCardStampGridElement, count: number) {
+  return Math.max(1, Math.min(count, Math.min(12, Math.floor(Number(element.columns) || 1))));
+}
+
 function stampJustifyContent(align: LoyaltyCardStampGridElement["horizontalAlign"]): CSSProperties["justifyContent"] {
   if (align === "left") return "flex-start";
   if (align === "right") return "flex-end";
@@ -318,14 +322,16 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
     const stamps = Array.isArray(stampData) ? stampData : [];
     const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
     const stampSize = resolvedStampSize(element);
+    const columns = resolvedStampColumns(element, count);
     return (
       <div
         key={element.id}
         style={{
           ...frame,
           overflow: "visible",
-          display: "flex",
-          flexWrap: "wrap",
+          display: "grid",
+          gridTemplateColumns: `repeat(${columns}, ${stampSize * scale}px)`,
+          gridAutoRows: `${stampSize * scale}px`,
           gap: element.gap * scale,
           justifyContent: stampJustifyContent(element.horizontalAlign),
           alignContent: stampAlignContent(element.verticalAlign),

@@ -163,12 +163,12 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
   const contentSize = stampContentSize(element);
   const hasOverflow = contentSize.width > element.width + 0.5 || contentSize.height > element.height + 0.5;
 
-  const applyChanges = (next: Partial<LoyaltyCardStampGridElement>, fitBox = Boolean(element.autoFitContainer)) => {
+  const applyChanges = (next: Partial<LoyaltyCardStampGridElement>, ensureBox = true) => {
     const draft = { ...element, ...next } as LoyaltyCardStampGridElement;
-    onChange({ ...next, ...(fitBox ? resizedStampBox(draft) : {}) });
+    onChange({ ...next, ...(ensureBox ? ensureStampBoxFits(draft) : {}) });
   };
 
-  const stepCount = (delta: number) => applyChanges({ count: clampNumber(count + delta, 1, 100), previewFilledCount: clampNumber(previewFilledCount, 0, clampNumber(count + delta, 1, 100)) });
+  const stepCount = (delta: number) => applyChanges({ count: clampNumber(count + delta, 1, 100), previewFilledCount: clampNumber(previewFilledCount, 0, clampNumber(count + delta, 1, 100)), countToken: "", filledToken: "" });
   const stepFilled = (delta: number) => applyChanges({ previewFilledCount: clampNumber(previewFilledCount + delta, 0, count) }, false);
   const stepSize = (delta: number) => applyChanges({ stampSize: clampNumber(stampSize + delta, 16, 220) });
   const stepGap = (delta: number) => applyChanges({ gap: clampNumber(gap + delta, 0, 80) });
@@ -206,8 +206,7 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
       {hasOverflow ? <div className="loyalty-stamp-overflow-note">Stamps overflow this box.</div> : null}
       <div className="loyalty-stamp-fit-actions">
         <button type="button" className="loyalty-stamp-fit-button" onClick={() => applyChanges({ stampSize: fitStampSize(element) }, false)}>Fit stamps to box</button>
-        <button type="button" className="loyalty-stamp-fit-button" onClick={() => onChange(resizedStampBox(element))}>Resize box to stamps</button>
-        <button type="button" className={element.autoFitContainer ? "loyalty-stamp-fit-button loyalty-stamp-fit-button--active" : "loyalty-stamp-fit-button"} aria-pressed={Boolean(element.autoFitContainer)} onClick={() => applyChanges({ autoFitContainer: !element.autoFitContainer }, !element.autoFitContainer)}>Keep box fitted</button>
+        <button type="button" className="loyalty-stamp-fit-button" onClick={() => onChange(resizedStampBox(element))}>Tighten box</button>
       </div>
       <div className="loyalty-stamp-align-grid" aria-label="Stamp grid alignment">
         {verticalOptions.flatMap((vertical) => horizontalOptions.map((horizontal) => {
@@ -704,18 +703,22 @@ function resizedStampBox(element: LoyaltyCardStampGridElement) {
   };
 }
 
+function ensureStampBoxFits(element: LoyaltyCardStampGridElement) {
+  const minimum = resizedStampBox(element);
+  return {
+    width: Math.max(element.width, minimum.width),
+    height: Math.max(element.height, minimum.height),
+  };
+}
+
 function fitStampSize(element: LoyaltyCardStampGridElement) {
   const count = clampNumber(Math.floor(Number(element.count) || 10), 1, 100);
   const gap = clampNumber(Number(element.gap) || 0, 0, 80);
-  let best = 16;
-  for (let columns = 1; columns <= count; columns += 1) {
-    const rows = Math.ceil(count / columns);
-    const widthSize = (element.width - gap * (columns - 1)) / columns;
-    const heightSize = (element.height - gap * (rows - 1)) / rows;
-    const size = Math.min(widthSize, heightSize);
-    if (size > best) best = size;
-  }
-  return Math.round(clampNumber(best, 16, 220));
+  const columns = Math.min(resolveStampColumns(element), count);
+  const rows = Math.ceil(count / columns);
+  const widthSize = (element.width - gap * (columns - 1)) / columns;
+  const heightSize = (element.height - gap * (rows - 1)) / rows;
+  return Math.round(clampNumber(Math.min(widthSize, heightSize), 16, 220));
 }
 
 function clampColorAlpha(value: number) {
@@ -1084,6 +1087,14 @@ export function LoyaltyCardEditor({
       ...preset,
       designSchema: updateElement(preset.designSchema, activeFace, selectedElement.id, updater),
     }));
+  };
+
+  const updateSelectedStampGrid = (next: Partial<LoyaltyCardStampGridElement>, ensureBox = true) => {
+    updateSelectedElement((element) => {
+      if (element.type !== "stampGrid") return element;
+      const draft = { ...element, ...next } as LoyaltyCardStampGridElement;
+      return { ...draft, ...(ensureBox ? ensureStampBoxFits(draft) : {}) } as LoyaltyCardElement;
+    });
   };
 
   const fontOptionsByCategory = useMemo(() => {
@@ -1938,13 +1949,16 @@ export function LoyaltyCardEditor({
                     {selectedElement.type === "stampGrid" ? (
                       <div className="loyalty-inspector-form">
                         <InspectorSection icon={GridTableIcon} label="Stamp grid" />
-                        <StampLayoutControl element={selectedElement} onChange={(next) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, ...next } : element)} />
+                        <StampLayoutControl element={selectedElement} onChange={(next) => updateSelectedStampGrid(next, false)} />
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Stamp size" /><input type="number" min="16" max="220" value={Math.round(resolveStampSize(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, stampSize: clampNumber(Number(event.target.value), 16, 220) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Stamp slots" /><input type="number" value={selectedElement.count} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, count: clampNumber(Number(event.target.value), 1, 100), previewFilledCount: clampNumber(Number(element.previewFilledCount || 0), 0, clampNumber(Number(event.target.value), 1, 100)) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Filled preview" /><input type="number" value={resolvePreviewFilledCount(selectedElement)} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, previewFilledCount: clampNumber(Number(event.target.value), 0, element.count || 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Gap" /><input type="number" value={selectedElement.gap} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, gap: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColumnInsertIcon} label="Columns" /><input type="number" value={selectedElement.columns} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, columns: clampNumber(Number(event.target.value), 1, 12) } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Stamp size" /><input type="number" min="16" max="220" value={Math.round(resolveStampSize(selectedElement))} onChange={(event) => updateSelectedStampGrid({ stampSize: clampNumber(Number(event.target.value), 16, 220) })} /></label>
+                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Stamp slots" /><input type="number" value={selectedElement.count} onChange={(event) => {
+                            const count = clampNumber(Number(event.target.value), 1, 100);
+                            updateSelectedStampGrid({ count, previewFilledCount: clampNumber(Number(selectedElement.previewFilledCount || 0), 0, count), countToken: "", filledToken: "" });
+                          }} /></label>
+                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Filled preview" /><input type="number" value={resolvePreviewFilledCount(selectedElement)} onChange={(event) => updateSelectedStampGrid({ previewFilledCount: clampNumber(Number(event.target.value), 0, selectedElement.count || 1) }, false)} /></label>
+                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Gap" /><input type="number" value={selectedElement.gap} onChange={(event) => updateSelectedStampGrid({ gap: clampNumber(Number(event.target.value), 0, 80) })} /></label>
+                          <label className="field field--icon"><IconLabel icon={ColumnInsertIcon} label="Columns" /><input type="number" value={selectedElement.columns} onChange={(event) => updateSelectedStampGrid({ columns: clampNumber(Number(event.target.value), 1, 12) })} /></label>
                         </div>
 
                         <details className="loyalty-advanced-section">
