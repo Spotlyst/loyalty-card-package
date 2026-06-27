@@ -60,6 +60,10 @@ function quoteFontFamily(family: string) {
   return `"${family.replace(/["\\]/g, "").trim() || "Outfit"}"`;
 }
 
+function cssString(value: string) {
+  return JSON.stringify(value.replace(/[\u0000-\u001F\u007F]/g, ""));
+}
+
 function googleFontsUrl(families: string[]) {
   const familyParams = families.map((family) => `family=${encodeURIComponent(family).replace(/%20/g, "+")}:ital,wght@0,100..900;1,100..900`);
   return `https://fonts.googleapis.com/css2?${familyParams.join("&")}&display=swap`;
@@ -86,7 +90,7 @@ function useLoyaltyCardFonts(elements: LoyaltyCardElement[]) {
       if (font.source === "customUrl" && font.fontUrl && !loadedFontKeys.has(`custom:${font.key}:${font.fontUrl}`)) {
         const style = document.createElement("style");
         style.setAttribute("data-spotlyst-font", font.key);
-        style.textContent = `@font-face{font-family:${quoteFontFamily(font.family)};src:url("${font.fontUrl.replace(/["\\]/g, "")}");font-display:swap;}`;
+        style.textContent = `@font-face{font-family:${cssString(font.family)};src:url(${cssString(font.fontUrl)});font-display:swap;}`;
         document.head.appendChild(style);
         loadedFontKeys.add(`custom:${font.key}:${font.fontUrl}`);
         return;
@@ -294,6 +298,7 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
         key={element.id}
         style={{
           ...frame,
+          overflow: "visible",
           display: "grid",
           gridTemplateColumns: `repeat(${element.columns}, minmax(0, 1fr))`,
           gap: element.gap * scale,
@@ -342,42 +347,103 @@ function stampAnimation(element: LoyaltyCardStampGridElement, index: number): CS
   };
 }
 
+function stableStampHash(elementId: string, index: number, salt: number) {
+  let hash = 2166136261;
+  for (let charIndex = 0; charIndex < elementId.length; charIndex += 1) {
+    hash ^= elementId.charCodeAt(charIndex);
+    hash = Math.imul(hash, 16777619);
+  }
+  hash ^= Math.imul(index + 1, 0x9e3779b1);
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b);
+  hash ^= Math.imul(salt, 0xc2b2ae35);
+  hash = Math.imul(hash ^ (hash >>> 13), 0x27d4eb2d);
+  return hash >>> 0;
+}
+
+function stableStampUnit(elementId: string, index: number, salt: number) {
+  return stableStampHash(elementId, index, salt) / 4294967295;
+}
+
+function filledStampImageUrl(element: LoyaltyCardStampGridElement, index: number) {
+  const imageUrls = Array.from(new Set([...(element.filledImageUrls || []), element.filledImageUrl || ""].filter(Boolean)));
+  if (!imageUrls.length) return "";
+  const imageIndex = (index + stableStampHash(element.id, 0, 101)) % imageUrls.length;
+  return imageUrls[imageIndex] || imageUrls[0] || "";
+}
+
+function filledStampRotation(element: LoyaltyCardStampGridElement, index: number) {
+  const maxRotation = Math.max(0, Math.min(45, element.filledRandomRotation ?? 45));
+  if (maxRotation === 0) return 0;
+  return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
+}
+
 function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number) {
-  const mode = filled ? element.filledMode || "shape" : element.emptyMode || "shape";
-  const shape = filled ? element.filledShape || element.shape : element.emptyShape || element.shape;
-  const fill = filled ? element.filledFill || element.stroke : element.emptyFill || element.fill;
-  const stroke = filled ? element.filledStroke || element.stroke : element.emptyStroke || element.stroke;
-  const strokeWidth = filled ? element.filledStrokeWidth ?? 2 : element.emptyStrokeWidth ?? 2;
-  const imageUrl = filled ? element.filledImageUrl || "" : element.emptyImageUrl || "";
   const dateLabel = filled && element.showStampDates !== false ? getStampDateLabel(stamp, element.dateFormat || "short") : "";
   const label = dateLabel || (filled ? `Stamp ${index + 1} earned` : `Stamp ${index + 1} empty`);
   const baseStyle: CSSProperties = {
     aspectRatio: "1 / 1",
     position: "relative",
     display: "block",
-    overflow: "hidden",
-    border: `${Math.max(1, strokeWidth * scale)}px solid ${stroke}`,
-    background: fill,
-    borderRadius: stampBorderRadius(shape, scale),
+    overflow: "visible",
     ...stampAnimation(element, index),
+  };
+  const composition = element.filledComposition || "overlay";
+  const emptyLayer = {
+    mode: element.emptyMode || "shape",
+    shape: element.emptyShape || element.shape,
+    fill: element.emptyFill || element.fill,
+    stroke: element.emptyStroke || element.stroke,
+    strokeWidth: element.emptyStrokeWidth ?? 2,
+    imageUrl: element.emptyImageUrl || "",
+    layerScale: element.emptyScale ?? 1,
+  };
+  const filledLayer = {
+    mode: element.filledMode || "shape",
+    shape: element.filledShape || element.shape,
+    fill: element.filledFill || element.stroke,
+    stroke: element.filledStroke || element.stroke,
+    strokeWidth: element.filledStrokeWidth ?? 2,
+    imageUrl: filledStampImageUrl(element, index),
+    layerScale: element.filledScale ?? 1,
+  };
+
+  const renderLayer = (layer: typeof emptyLayer, key: string, zIndex: number, rotation = 0) => {
+    const hasPresetImage = layer.mode === "image" && Boolean(layer.imageUrl);
+    const layerStyle: CSSProperties = {
+      position: "absolute",
+      inset: 0,
+      boxSizing: "border-box",
+      zIndex,
+      overflow: "hidden",
+      border: hasPresetImage ? "none" : `${Math.max(1, layer.strokeWidth * scale)}px solid ${layer.stroke}`,
+      background: hasPresetImage ? "transparent" : layer.fill,
+      borderRadius: hasPresetImage ? 0 : stampBorderRadius(layer.shape, scale),
+      pointerEvents: "none",
+      transform: `scale(${Math.max(0.25, Math.min(2.5, layer.layerScale))}) rotate(${rotation}deg)`,
+      transformOrigin: "center center",
+    };
+    return (
+      <span key={key} aria-hidden="true" style={layerStyle}>
+        {hasPresetImage ? (
+          <img
+            src={layer.imageUrl}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: element.imageFit === "fill" ? "fill" : element.imageFit || "contain",
+              pointerEvents: "none",
+            }}
+          />
+        ) : null}
+      </span>
+    );
   };
 
   return (
     <span key={`${element.id}-${index}`} title={dateLabel} aria-label={label} style={baseStyle}>
-      {mode === "image" && imageUrl ? (
-        <img
-          src={imageUrl}
-          alt=""
-          style={{
-            position: "absolute",
-            inset: (element.imageInset || 0) * scale,
-            width: `calc(100% - ${(element.imageInset || 0) * 2 * scale}px)`,
-            height: `calc(100% - ${(element.imageInset || 0) * 2 * scale}px)`,
-            objectFit: element.imageFit === "fill" ? "fill" : element.imageFit || "contain",
-            pointerEvents: "none",
-          }}
-        />
-      ) : null}
+      {filled && composition === "replace" ? renderLayer(filledLayer, "filled", 1, filledStampRotation(element, index)) : renderLayer(emptyLayer, "empty", 1)}
+      {filled && composition !== "replace" ? renderLayer(filledLayer, "filled", 2, filledStampRotation(element, index)) : null}
     </span>
   );
 }

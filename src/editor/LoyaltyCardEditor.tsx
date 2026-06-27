@@ -42,7 +42,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
-import { AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlignVerticalSpaceBetween, ArrowDown, ArrowLeft, ArrowUp, BringToFront, Circle, Crosshair, Eye, EyeOff, GripVertical, Grid3X3, Image, Link, Lock, Minus, SendToBack, Shapes, Square, Trash2, Type, Unlock, UploadCloud } from "lucide-react";
+import { AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlignVerticalSpaceBetween, Archive, ArrowDown, ArrowLeft, ArrowUp, BringToFront, Circle, Crosshair, Eye, EyeOff, GripVertical, Grid3X3, Image, Link, Lock, Minus, RotateCcw, SendToBack, Shapes, Square, Trash2, Type, Unlock, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
@@ -63,6 +63,7 @@ const fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 const fontCategories = ["sans", "serif", "display", "script", "handwritten", "condensed", "retro", "luxury", "poster", "multilingual"] as const;
 const HISTORY_LIMIT = 80;
 const EDITOR_THEME_STORAGE_KEY = "spotlyst.loyaltyCardEditor.theme";
+const MAX_FILLED_STAMP_PRESETS = 5;
 type EditorChromeTheme = "light" | "dark";
 const FACE_LABELS: Record<LoyaltyCardFaceKey, string> = {
   front: "Front",
@@ -96,6 +97,27 @@ export type LoyaltyCardEditorImageContext = {
 
 export type LoyaltyCardEditorMediaResult = string | { url?: string; cdnUrl?: string };
 
+export type LoyaltyCardEditorLibraryAsset = {
+  id: string;
+  name: string;
+  category: string;
+  status?: "active" | "hidden" | "archived";
+  cdnUrl: string;
+  width?: number;
+  height?: number;
+  tags?: string[];
+};
+
+export type LoyaltyCardEditorUploadedFont = {
+  id: string;
+  name: string;
+  fontFamily: string;
+  fontUrl?: string;
+  cdnUrl?: string;
+  fontWeight?: number;
+  fontStyle?: "normal" | "italic";
+};
+
 export type LoyaltyCardEditorProps = {
   value: LoyaltyCardPresetRecord;
   onChange: (record: LoyaltyCardPresetRecord) => void;
@@ -109,6 +131,14 @@ export type LoyaltyCardEditorProps = {
   error?: string | null;
   onUploadImage?: (file: File, context: LoyaltyCardEditorImageContext) => Promise<LoyaltyCardEditorMediaResult>;
   onImportImageUrl?: (url: string, context: LoyaltyCardEditorImageContext) => Promise<LoyaltyCardEditorMediaResult>;
+  assetLibrary?: LoyaltyCardEditorLibraryAsset[];
+  uploadedFonts?: LoyaltyCardEditorUploadedFont[];
+  onUploadLibraryAsset?: (file: File, meta: { name: string; category: string }) => Promise<LoyaltyCardEditorLibraryAsset>;
+  onArchiveLibraryAsset?: (assetId: string) => Promise<void>;
+  onRestoreLibraryAsset?: (assetId: string) => Promise<void>;
+  onDeleteLibraryAsset?: (assetId: string) => Promise<void>;
+  onUploadFont?: (file: File, meta: { name: string; fontFamily: string; fontWeight: number; fontStyle: "normal" | "italic" }) => Promise<LoyaltyCardEditorUploadedFont>;
+  onArchiveFont?: (fontId: string) => Promise<void>;
 };
 
 function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
@@ -288,6 +318,200 @@ function FontBrowserItem({ font, isActive, onSelect }: { font: LoyaltyCardFontCa
   );
 }
 
+function getUploadedFontUrl(font: LoyaltyCardEditorUploadedFont) {
+  return font.fontUrl || font.cdnUrl || "";
+}
+
+function cssString(value: string) {
+  return JSON.stringify(value.replace(/[\u0000-\u001F\u007F]/g, ""));
+}
+
+function loadUploadedFontPreview(font: LoyaltyCardEditorUploadedFont) {
+  const fontUrl = getUploadedFontUrl(font);
+  if (!fontUrl || typeof document === "undefined") return;
+  const key = `uploaded:${font.id}:${fontUrl}`;
+  if (loadedPreviewFontKeys.has(key)) return;
+  loadedPreviewFontKeys.add(key);
+  const style = document.createElement("style");
+  style.setAttribute("data-spotlyst-uploaded-font", font.id);
+  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-display:swap;}`;
+  document.head.appendChild(style);
+}
+
+function UploadedFontBrowserItem({ font, isActive, onSelect, onArchive }: { font: LoyaltyCardEditorUploadedFont; isActive: boolean; onSelect: (fontId: string) => void; onArchive?: (fontId: string) => Promise<void> }) {
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  useEffect(() => {
+    loadUploadedFontPreview(font);
+  }, [font]);
+
+  return (
+    <div className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active loyalty-font-browser-item--with-action" : "loyalty-font-browser-item loyalty-font-browser-item--with-action"}>
+      <button type="button" onClick={() => onSelect(font.id)}>
+        <strong style={{ fontFamily: `"${font.fontFamily}", sans-serif`, fontWeight: font.fontWeight || 400 }}>{font.fontFamily}</strong>
+        <small>Uploaded</small>
+      </button>
+      {onArchive ? <button type="button" disabled={isArchiving} onClick={async () => { setIsArchiving(true); try { await onArchive(font.id); } finally { setIsArchiving(false); } }}>Archive</button> : null}
+    </div>
+  );
+}
+
+function LibraryAssetCard({ asset, isActive, onSelect, onArchive, onRestore, onDelete }: { asset: LoyaltyCardEditorLibraryAsset; isActive?: boolean; onSelect: (asset: LoyaltyCardEditorLibraryAsset) => void; onArchive?: (assetId: string) => Promise<void>; onRestore?: (assetId: string) => Promise<void>; onDelete?: (assetId: string) => Promise<void> }) {
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const isArchived = asset.status === "archived";
+  return (
+    <div className={["loyalty-asset-card", isActive ? "loyalty-asset-card--active" : "", isArchived ? "loyalty-asset-card--archived" : ""].filter(Boolean).join(" ")}>
+      <button type="button" aria-label={isArchived ? `${asset.name} archived` : `Use ${asset.name}`} title={asset.name} disabled={isArchived} onClick={() => onSelect(asset)}>
+        <span className="loyalty-asset-card__preview"><img src={asset.cdnUrl} alt="" loading="lazy" /></span>
+      </button>
+      <div className="loyalty-asset-card__actions">
+        {onArchive && !isArchived ? <button type="button" className="loyalty-asset-card__archive" aria-label={`Archive ${asset.name}`} title="Archive" disabled={isArchiving || isDeleting} onClick={async (event) => { event.stopPropagation(); setIsArchiving(true); try { await onArchive(asset.id); } finally { setIsArchiving(false); } }}><Archive size={13} /></button> : null}
+        {onRestore && isArchived ? <button type="button" className="loyalty-asset-card__restore" aria-label={`Restore ${asset.name}`} title="Restore" disabled={isRestoring || isDeleting} onClick={async (event) => { event.stopPropagation(); setIsRestoring(true); try { await onRestore(asset.id); } finally { setIsRestoring(false); } }}><RotateCcw size={13} /></button> : null}
+        {onDelete ? <button type="button" className="loyalty-asset-card__delete" aria-label={`Permanently delete ${asset.name}`} title="Delete permanently" disabled={isArchiving || isRestoring || isDeleting} onClick={async (event) => { event.stopPropagation(); if (typeof window !== "undefined" && !window.confirm("Permanently delete this stamp preset from the library? Existing designs that already use it will keep rendering.")) return; setIsDeleting(true); try { await onDelete(asset.id); } finally { setIsDeleting(false); } }}><Trash2 size={13} /></button> : null}
+      </div>
+    </div>
+  );
+}
+
+function LibraryAssetUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadLibraryAsset"] }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("stamp_empty");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl("");
+      return;
+    }
+    const nextPreviewUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(nextPreviewUrl);
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [selectedFile]);
+  if (!onUpload) return null;
+
+  const resetForm = () => {
+    setName("");
+    setCategory("stamp_empty");
+    setSelectedFile(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const closeModal = () => {
+    if (isUploading) return;
+    setIsOpen(false);
+    resetForm();
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setError("Choose an asset file first");
+      return;
+    }
+    setIsUploading(true);
+    setError(null);
+    try {
+      await onUpload(selectedFile, { name: name.trim() || selectedFile.name.replace(/\.[^.]+$/, ""), category });
+      setIsOpen(false);
+      resetForm();
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Asset upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className="loyalty-library-upload-trigger" onClick={() => setIsOpen(true)}><UploadCloud size={14} />Upload assets</button>
+      {isOpen ? (
+        <div className="loyalty-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
+          <div className="loyalty-modal-card" role="dialog" aria-modal="true" aria-labelledby="loyalty-asset-upload-title">
+            <div className="loyalty-modal-header">
+              <div>
+                <strong id="loyalty-asset-upload-title">Upload stamp asset</strong>
+                <small>Safe SVG or square raster stamp</small>
+              </div>
+              <button type="button" aria-label="Close upload dialog" disabled={isUploading} onClick={closeModal}>x</button>
+            </div>
+            <div className="loyalty-library-upload loyalty-library-upload--modal">
+              <label className="field"><span>Asset name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" /></label>
+              <div className="loyalty-category-choice" role="group" aria-label="Category">
+                <span>Category</span>
+                <div>
+                  <button type="button" aria-pressed={category === "stamp_empty"} className={category === "stamp_empty" ? "loyalty-category-choice__button loyalty-category-choice__button--active" : "loyalty-category-choice__button"} onClick={() => setCategory("stamp_empty")}>Empty stamp</button>
+                  <button type="button" aria-pressed={category === "stamp_filled"} className={category === "stamp_filled" ? "loyalty-category-choice__button loyalty-category-choice__button--active" : "loyalty-category-choice__button"} onClick={() => setCategory("stamp_filled")}>Filled stamp</button>
+                </div>
+              </div>
+              <input ref={inputRef} className="loyalty-image-url-file" type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" onChange={(event) => { setSelectedFile(event.target.files?.[0] || null); setError(null); }} />
+              <button type="button" className="loyalty-file-picker-button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{selectedFile ? selectedFile.name : "Choose file"}</button>
+              {previewUrl ? (
+                <div className="loyalty-selected-asset-preview" aria-label="Selected asset preview">
+                  <img src={previewUrl} alt="" />
+                </div>
+              ) : null}
+              <small className="loyalty-upload-hint">Upload a safe SVG, or a square PNG/JPG/WebP at least 512 x 512 px. Files upload only after you click Upload.</small>
+              {error ? <small className="loyalty-image-url-error">{error}</small> : null}
+              <div className="loyalty-modal-actions">
+                <button type="button" disabled={isUploading} onClick={closeModal}>Cancel</button>
+                <button type="button" disabled={isUploading || !selectedFile} onClick={handleUpload}>{isUploading ? "Uploading" : "Upload"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function FontUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadFont"] }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [name, setName] = useState("");
+  const [fontFamily, setFontFamily] = useState("");
+  const [fontWeight, setFontWeight] = useState(400);
+  const [fontStyle, setFontStyle] = useState<"normal" | "italic">("normal");
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!onUpload) return null;
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    const fallbackName = file.name.replace(/\.[^.]+$/, "");
+    setIsUploading(true);
+    setError(null);
+    try {
+      await onUpload(file, { name: name.trim() || fallbackName, fontFamily: fontFamily.trim() || name.trim() || fallbackName, fontWeight, fontStyle });
+      setName("");
+      setFontFamily("");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Font upload failed");
+    } finally {
+      setIsUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="loyalty-library-upload">
+      <label className="field"><span>Font name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" /></label>
+      <label className="field"><span>Font family</span><input value={fontFamily} onChange={(event) => setFontFamily(event.target.value)} placeholder="Display name" /></label>
+      <div className="loyalty-inspector-form loyalty-inspector-form--grid">
+        <label className="field"><span>Weight</span><select value={fontWeight} onChange={(event) => setFontWeight(Number(event.target.value))}>{fontWeights.map((weight) => <option key={weight} value={weight}>{weight}</option>)}</select></label>
+        <label className="field"><span>Style</span><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value as "normal" | "italic")}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
+      </div>
+      <input ref={inputRef} className="loyalty-image-url-file" type="file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => handleFile(event.target.files?.[0])} />
+      <button type="button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{isUploading ? "Uploading" : "Upload font"}</button>
+      {error ? <small className="loyalty-image-url-error">{error}</small> : null}
+    </div>
+  );
+}
+
 function withFace(schema: LoyaltyCardDesignSchema, face: LoyaltyCardFaceKey, elements: LoyaltyCardElement[]) {
   return {
     ...schema,
@@ -361,7 +585,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
     return { ...base, type, color: "#111827", strokeWidth: 4 };
   }
 
-  return { ...base, type, width: 300, height: 220, columns: 5, count: 10, countToken: "{{stampsRequired}}", filledToken: "{{stampsCollected}}", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
+  return { ...base, type, width: 300, height: 220, columns: 5, count: 10, countToken: "{{stampsRequired}}", filledToken: "{{stampsCollected}}", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", emptyScale: 1, filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -602,11 +826,21 @@ export function LoyaltyCardEditor({
   error,
   onUploadImage,
   onImportImageUrl,
+  assetLibrary = [],
+  uploadedFonts = [],
+  onUploadLibraryAsset,
+  onArchiveLibraryAsset,
+  onRestoreLibraryAsset,
+  onDeleteLibraryAsset,
+  onUploadFont,
+  onArchiveFont,
 }: LoyaltyCardEditorProps) {
   const faceKeys = faces && faces.length ? faces : [...LOYALTY_CARD_FACE_KEYS];
   const [activeFace, setActiveFace] = useState<LoyaltyCardFaceKey>(faceKeys[0]);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [leftPanelTab, setLeftPanelTab] = useState<"tools" | "layers">("tools");
+  const [stampPresetTab, setStampPresetTab] = useState<"empty" | "filled">("empty");
+  const [showArchivedAssets, setShowArchivedAssets] = useState(false);
   const [inspectorPane, setInspectorPane] = useState<"properties" | "fontPicker">("properties");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [editorTheme, setEditorTheme] = useState<EditorChromeTheme>(() => getStoredEditorTheme());
@@ -625,6 +859,15 @@ export function LoyaltyCardEditor({
   const selectedEditableElements = selectedElements.filter((element) => !element.locked && !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeElements.find((element) => element.id === selectedElementIds[0]) || null : null;
   const selectedGroupIds = activeGroups.filter((group) => group.elementIds.some((id) => selectedElementIds.includes(id))).map((group) => group.id);
+  const emptyStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_empty" && asset.status !== "archived");
+  const filledStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_filled" && asset.status !== "archived");
+  const archivedEmptyStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_empty" && asset.status === "archived");
+  const archivedFilledStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_filled" && asset.status === "archived");
+  const hasArchivedStampAssets = stampPresetTab === "empty" ? archivedEmptyStampAssets.length > 0 : archivedFilledStampAssets.length > 0;
+  const showArchivedForActiveStampTab = showArchivedAssets && hasArchivedStampAssets;
+  const visibleEmptyStampAssets = showArchivedForActiveStampTab ? archivedEmptyStampAssets : emptyStampAssets;
+  const visibleFilledStampAssets = showArchivedForActiveStampTab ? archivedFilledStampAssets : filledStampAssets;
+  const showStampPresetPanel = selectedElement?.type === "stampGrid" && activeFace === "back";
 
   useEffect(() => {
     try {
@@ -723,7 +966,14 @@ export function LoyaltyCardEditor({
       fonts: matchingFonts.filter((font) => font.category === category),
     })).filter((group) => group.fonts.length > 0);
   }, [fontSearch]);
-  const visibleFontCount = fontOptionsByCategory.reduce((count, group) => count + group.fonts.length, 0);
+  const visibleUploadedFonts = useMemo(() => {
+    const query = fontSearch.trim().toLowerCase();
+    return uploadedFonts.filter((font) => {
+      if (!query) return true;
+      return font.name.toLowerCase().includes(query) || font.fontFamily.toLowerCase().includes(query);
+    });
+  }, [fontSearch, uploadedFonts]);
+  const visibleFontCount = fontOptionsByCategory.reduce((count, group) => count + group.fonts.length, 0) + visibleUploadedFonts.length;
 
   const applyCatalogFont = (fontKey: string) => {
     const font = loyaltyCardFontCatalog.find((item) => item.key === fontKey);
@@ -741,6 +991,49 @@ export function LoyaltyCardEditor({
       };
     });
     setInspectorPane("properties");
+  };
+
+  const applyUploadedFont = (fontId: string) => {
+    const font = uploadedFonts.find((item) => item.id === fontId);
+    const fontUrl = font ? getUploadedFontUrl(font) : "";
+    if (!font || !fontUrl) return;
+    loadUploadedFontPreview(font);
+    updateSelectedElement((element) => {
+      if (element.type !== "text") return element;
+      return {
+        ...element,
+        fontSource: "customUrl",
+        fontKey: font.id,
+        fontFamily: font.fontFamily,
+        fontUrl,
+        fontWeight: font.fontWeight || element.fontWeight || 400,
+        fontStyle: font.fontStyle || "normal",
+      };
+    });
+    setInspectorPane("properties");
+  };
+
+  const applyEmptyStampPreset = (asset: LoyaltyCardEditorLibraryAsset) => {
+    updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: "image", emptyImageUrl: asset.cdnUrl } : element);
+  };
+
+  const applyFilledStampPreset = (asset: LoyaltyCardEditorLibraryAsset) => {
+    updateSelectedElement((element) => {
+      if (element.type !== "stampGrid") return element;
+      const currentUrls = Array.from(new Set([...(element.filledImageUrls || []), element.filledImageUrl || ""].filter(Boolean)));
+      const isSelected = currentUrls.includes(asset.cdnUrl);
+      const nextUrls = isSelected
+        ? currentUrls.filter((url) => url !== asset.cdnUrl)
+        : currentUrls.length < MAX_FILLED_STAMP_PRESETS
+          ? [...currentUrls, asset.cdnUrl]
+          : currentUrls;
+      return {
+        ...element,
+        filledMode: nextUrls.length ? "image" : "shape",
+        filledImageUrl: nextUrls[0] || "",
+        filledImageUrls: nextUrls,
+      };
+    });
   };
 
   const updateBackground = (background: LoyaltyCardBackground) => {
@@ -765,6 +1058,7 @@ export function LoyaltyCardEditor({
   };
 
   const handleAddElement = (type: LoyaltyCardElement["type"], options?: { shape?: "rect" | "circle" | "blob" }) => {
+    if (type === "stampGrid" && activeFace !== "back") return;
     const element = createElement(type, activeElements.length + 1, options);
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
@@ -932,7 +1226,8 @@ export function LoyaltyCardEditor({
         x: clampNumber(element.x + 24, -element.width, CANVAS_WIDTH),
         y: clampNumber(element.y + 24, -element.height, CANVAS_HEIGHT),
         zIndex: activeElements.length + index + 1,
-      } as LoyaltyCardElement));
+      } as LoyaltyCardElement))
+      .filter((element) => activeFace === "back" || element.type !== "stampGrid");
     if (copies.length === 0) return;
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
@@ -956,7 +1251,8 @@ export function LoyaltyCardEditor({
       x: clampNumber(element.x + 24, -element.width, CANVAS_WIDTH),
       y: clampNumber(element.y + 24, -element.height, CANVAS_HEIGHT),
       zIndex: activeElements.length + index + 1,
-    } as LoyaltyCardElement));
+    } as LoyaltyCardElement)).filter((element) => activeFace === "back" || element.type !== "stampGrid");
+    if (copies.length === 0) return;
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
       designSchema: withFace(preset.designSchema, activeFace, [...activeElements, ...copies]),
@@ -1094,12 +1390,47 @@ export function LoyaltyCardEditor({
 
       <div className="loyalty-studio-shell">
         <aside className="loyalty-studio-sidebar" aria-label="Editor sidebar">
-          <div className="loyalty-studio-tabs" role="tablist" aria-label="Editor sidebar tabs">
-            <button className={leftPanelTab === "tools" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "tools"} onClick={() => setLeftPanelTab("tools")}>Tools</button>
-            <button className={leftPanelTab === "layers" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "layers"} onClick={() => setLeftPanelTab("layers")}>Layers</button>
-          </div>
+          {showStampPresetPanel ? (
+            <div className="loyalty-studio-tab-panel" role="tabpanel" aria-label="Stamp presets">
+              <div className="loyalty-studio-panel-header">
+                <span>Stamp presets</span>
+                <strong>{emptyStampAssets.length + filledStampAssets.length}</strong>
+              </div>
+              <LibraryAssetUpload onUpload={onUploadLibraryAsset} />
+              <div className="loyalty-stamp-preset-tabs" role="tablist" aria-label="Stamp preset type">
+                <button type="button" role="tab" aria-selected={stampPresetTab === "empty"} className={stampPresetTab === "empty" ? "loyalty-stamp-preset-tabs__button loyalty-stamp-preset-tabs__button--active" : "loyalty-stamp-preset-tabs__button"} onClick={() => setStampPresetTab("empty")}>Empty</button>
+                <button type="button" role="tab" aria-selected={stampPresetTab === "filled"} className={stampPresetTab === "filled" ? "loyalty-stamp-preset-tabs__button loyalty-stamp-preset-tabs__button--active" : "loyalty-stamp-preset-tabs__button"} onClick={() => setStampPresetTab("filled")}>Filled</button>
+              </div>
+              <div className="loyalty-studio-insert-section" role="tabpanel" aria-label={stampPresetTab === "empty" ? "Empty stamp presets" : "Filled stamp presets"}>
+                <div className="loyalty-stamp-preset-section-heading">
+                  <span>{stampPresetTab === "empty" ? "Empty stamp" : `Filled stamp${selectedElement?.type === "stampGrid" ? ` (${Array.from(new Set([...(selectedElement.filledImageUrls || []), selectedElement.filledImageUrl || ""].filter(Boolean))).length}/${MAX_FILLED_STAMP_PRESETS})` : ""}`}</span>
+                  {onArchiveLibraryAsset && hasArchivedStampAssets ? <button type="button" className={showArchivedForActiveStampTab ? "loyalty-archived-toggle loyalty-archived-toggle--active" : "loyalty-archived-toggle"} aria-pressed={showArchivedForActiveStampTab} onClick={() => setShowArchivedAssets((current) => !current)}>Show archived</button> : null}
+                </div>
+                <div className="loyalty-asset-library-grid">
+                  {stampPresetTab === "empty" ? (
+                    <>
+                      {visibleEmptyStampAssets.map((asset) => <LibraryAssetCard key={asset.id} asset={asset} isActive={selectedElement?.type === "stampGrid" && selectedElement.emptyImageUrl === asset.cdnUrl} onSelect={applyEmptyStampPreset} onArchive={onArchiveLibraryAsset} onRestore={onRestoreLibraryAsset} onDelete={onDeleteLibraryAsset} />)}
+                      {!showArchivedForActiveStampTab && selectedElement?.type === "stampGrid" && selectedElement.emptyImageUrl ? <button type="button" className="loyalty-stamp-reset-button" onClick={() => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: "shape", emptyImageUrl: "" } : element)}>Use shape style</button> : null}
+                      {visibleEmptyStampAssets.length === 0 ? <div className="loyalty-inspector-empty">{showArchivedForActiveStampTab ? "No archived empty stamp presets." : "No empty stamp presets yet."}</div> : null}
+                    </>
+                  ) : (
+                    <>
+                      {visibleFilledStampAssets.map((asset) => <LibraryAssetCard key={asset.id} asset={asset} isActive={selectedElement?.type === "stampGrid" && Array.from(new Set([...(selectedElement.filledImageUrls || []), selectedElement.filledImageUrl || ""].filter(Boolean))).includes(asset.cdnUrl)} onSelect={applyFilledStampPreset} onArchive={onArchiveLibraryAsset} onRestore={onRestoreLibraryAsset} onDelete={onDeleteLibraryAsset} />)}
+                      {!showArchivedForActiveStampTab && selectedElement?.type === "stampGrid" && (selectedElement.filledImageUrl || selectedElement.filledImageUrls?.length) ? <button type="button" className="loyalty-stamp-reset-button" onClick={() => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: "shape", filledImageUrl: "", filledImageUrls: [] } : element)}>Use shape style</button> : null}
+                      {visibleFilledStampAssets.length === 0 ? <div className="loyalty-inspector-empty">{showArchivedForActiveStampTab ? "No archived filled stamp presets." : "No filled stamp presets yet."}</div> : null}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="loyalty-studio-tabs" role="tablist" aria-label="Editor sidebar tabs">
+                <button className={leftPanelTab === "tools" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "tools"} onClick={() => setLeftPanelTab("tools")}>Tools</button>
+                <button className={leftPanelTab === "layers" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "layers"} onClick={() => setLeftPanelTab("layers")}>Layers</button>
+              </div>
 
-          {leftPanelTab === "tools" ? (
+              {leftPanelTab === "tools" ? (
             <div className="loyalty-studio-tab-panel" role="tabpanel" aria-label="Tools">
               <div className="loyalty-studio-panel-header">
                 <span>Insert</span>
@@ -1122,12 +1453,14 @@ export function LoyaltyCardEditor({
                     <button type="button" aria-label="Add line" title="Line" onClick={() => handleAddElement("line")}><Minus size={18} /><span>Line</span></button>
                   </div>
                 </div>
-                <div className="loyalty-studio-insert-section">
-                  <span>Loyalty</span>
-                  <div className="loyalty-studio-insert-grid">
-                    <button type="button" aria-label="Add stamp grid" title="Stamp grid" onClick={() => handleAddElement("stampGrid")}><Grid3X3 size={18} /><span>Stamp grid</span></button>
+                {activeFace === "back" ? (
+                  <div className="loyalty-studio-insert-section">
+                    <span>Loyalty</span>
+                    <div className="loyalty-studio-insert-grid">
+                      <button type="button" aria-label="Add stamp grid" title="Stamp grid" onClick={() => handleAddElement("stampGrid")}><Grid3X3 size={18} /><span>Stamp grid</span></button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -1196,6 +1529,8 @@ export function LoyaltyCardEditor({
                 })}
               </div>
             </div>
+          )}
+            </>
           )}
         </aside>
 
@@ -1274,7 +1609,17 @@ export function LoyaltyCardEditor({
               </div>
               <label className="field"><span>Search fonts</span><input autoFocus value={fontSearch} onChange={(event) => setFontSearch(event.target.value)} /></label>
               <div className="loyalty-font-browser-count">{visibleFontCount} fonts</div>
+              <FontUpload onUpload={onUploadFont} />
               <div className="loyalty-font-browser-list">
+                {visibleUploadedFonts.length ? (
+                  <div className="loyalty-font-browser-group">
+                    <span>Uploaded fonts</span>
+                    {visibleUploadedFonts.map((font) => {
+                      const isActive = selectedElement.fontSource === "customUrl" && selectedElement.fontKey === font.id;
+                      return <UploadedFontBrowserItem key={font.id} font={font} isActive={isActive} onSelect={applyUploadedFont} onArchive={onArchiveFont} />;
+                    })}
+                  </div>
+                ) : null}
                 {fontOptionsByCategory.map((group) => (
                   <div key={group.category} className="loyalty-font-browser-group">
                     <span>{getLoyaltyCardFontCategoryLabel(group.category)}</span>
@@ -1368,24 +1713,16 @@ export function LoyaltyCardEditor({
                             <button key={token} type="button" onClick={() => updateSelectedElement((element) => element.type === "text" ? { ...element, token: `${element.token}${element.token ? " " : ""}${token}` } : element)}>{token}</button>
                           ))}
                         </div>
-                        <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Font source" /><select value={selectedElement.fontSource || "catalog"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontSource: event.target.value as "preset" | "catalog" | "customUrl" } : element)}><option value="catalog">Catalog</option><option value="customUrl">Custom URL</option><option value="preset">Legacy preset</option></select></label>
-                        {(selectedElement.fontSource || "catalog") === "customUrl" ? (
-                          <>
-                            <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Font family" /><input value={selectedElement.fontFamily} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontFamily: event.target.value, fontKey: event.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") } : element)} /></label>
-                            <label className="field field--icon"><IconLabel icon={Link01Icon} label="Font URL" /><input type="url" placeholder="https://.../font.woff2" value={selectedElement.fontUrl || ""} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontUrl: event.target.value } : element)} /></label>
-                          </>
-                        ) : (
-                          <div className="field">
-                            <span>Font family</span>
-                            <button className="loyalty-font-family-trigger" type="button" onClick={() => {
-                              setFontSearch("");
-                              setInspectorPane("fontPicker");
-                            }}>
-                              <strong>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
-                              <small>Browse fonts</small>
-                            </button>
-                          </div>
-                        )}
+                        <div className="field">
+                          <span>Font family</span>
+                          <button className="loyalty-font-family-trigger" type="button" onClick={() => {
+                            setFontSearch("");
+                            setInspectorPane("fontPicker");
+                          }}>
+                            <strong>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
+                            <small>Google Fonts and uploaded fonts</small>
+                          </button>
+                        </div>
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                           <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(getTextFontWeight(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontWeight: Number(event.target.value) } : element)}>{fontWeights.map((weight) => <option key={weight} value={String(weight)}>{weight}</option>)}</select></label>
                           <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={getTextFontStyle(selectedElement)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontStyle: event.target.value as "normal" | "italic" } : element)}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
@@ -1492,28 +1829,29 @@ export function LoyaltyCardEditor({
 
                         <InspectorSection icon={CircleIcon} label="Empty" />
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Empty mode" /><select value={selectedElement.emptyMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Image/SVG</option></select></label>
+                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Empty mode" /><select value={selectedElement.emptyMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Preset image</option></select></label>
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Empty shape" /><select value={selectedElement.emptyShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyShape: event.target.value as "circle" | "rounded_square" | "heart", shape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
                           <ColorField label="Empty fill" value={selectedElement.emptyFill || selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyFill: color, fill: color } : element)} fallback="#FFFFFF" />
                           <ColorField label="Empty stroke" value={selectedElement.emptyStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStroke: color, stroke: color } : element)} fallback="#111827" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Empty stroke width" /><input type="number" value={selectedElement.emptyStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                          <ImageUrlField label="Empty image URL" value={selectedElement.emptyImageUrl || ""} context={{ face: activeFace, field: "stampGrid.emptyImageUrl", elementId: selectedElement.id, currentUrl: selectedElement.emptyImageUrl || "" }} onChange={(emptyImageUrl) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyImageUrl, emptyMode: emptyImageUrl.trim() ? "image" : element.emptyMode } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
+                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Empty scale" /><input type="number" min="25" max="250" step="5" value={Math.round((selectedElement.emptyScale ?? 1) * 100)} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyScale: clampNumber(Number(event.target.value), 25, 250) / 100 } : element)} /></label>
                         </div>
 
                         <InspectorSection icon={SparklesIcon} label="Filled" />
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Filled mode" /><select value={selectedElement.filledMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Image/SVG</option></select></label>
+                          <label className="field field--icon"><IconLabel icon={SparklesIcon} label="Filled behavior" /><select value={selectedElement.filledComposition || "overlay"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledComposition: event.target.value as "overlay" | "replace" } : element)}><option value="overlay">Overlay empty stamp</option><option value="replace">Replace empty stamp</option></select></label>
+                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Filled mode" /><select value={selectedElement.filledMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Preset image</option></select></label>
                           <label className="field field--icon"><IconLabel icon={CircleIcon} label="Filled shape" /><select value={selectedElement.filledShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledShape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
                           <ColorField label="Filled fill" value={selectedElement.filledFill || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledFill: color } : element)} fallback="#F97316" />
                           <ColorField label="Filled stroke" value={selectedElement.filledStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStroke: color } : element)} fallback="#F97316" />
                           <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Filled stroke width" /><input type="number" value={selectedElement.filledStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                          <ImageUrlField label="Filled image URL" value={selectedElement.filledImageUrl || ""} context={{ face: activeFace, field: "stampGrid.filledImageUrl", elementId: selectedElement.id, currentUrl: selectedElement.filledImageUrl || "" }} onChange={(filledImageUrl) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledImageUrl, filledMode: filledImageUrl.trim() ? "image" : element.filledMode } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
+                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Filled scale" /><input type="number" min="25" max="250" step="5" value={Math.round((selectedElement.filledScale ?? 1) * 100)} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledScale: clampNumber(Number(event.target.value), 25, 250) / 100 } : element)} /></label>
+                          <label className="field field--icon"><IconLabel icon={Rotate01Icon} label="Random rotation" /><input type="number" min="0" max="45" step="1" value={selectedElement.filledRandomRotation ?? 45} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledRandomRotation: clampNumber(Number(event.target.value), 0, 45) } : element)} /></label>
                         </div>
 
                         <InspectorSection icon={Timer01Icon} label="Metadata & motion" />
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
                           <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Image fit" /><select value={selectedElement.imageFit || "contain"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, imageFit: event.target.value as "contain" | "cover" | "fill" } : element)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="fill">Fill</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Image inset" /><input type="number" value={selectedElement.imageInset ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, imageInset: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={CalendarCheckIcon} label="Show dates" /><select value={selectedElement.showStampDates === false ? "false" : "true"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, showStampDates: event.target.value === "true" } : element)}><option value="true">Yes</option><option value="false">No</option></select></label>
                           <label className="field field--icon"><IconLabel icon={Clock01Icon} label="Date format" /><select value={selectedElement.dateFormat || "short"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, dateFormat: event.target.value as "short" | "medium" | "relative" } : element)}><option value="short">Short</option><option value="medium">Medium</option><option value="relative">Relative</option></select></label>
                           <label className="field field--icon"><IconLabel icon={SparklesIcon} label="Animation" /><select value={selectedElement.animation || "none"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, animation: event.target.value as "none" | "pop" | "stamp" | "bounce" } : element)}><option value="none">None</option><option value="pop">Pop</option><option value="stamp">Stamp</option><option value="bounce">Bounce</option></select></label>

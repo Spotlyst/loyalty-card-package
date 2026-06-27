@@ -19,6 +19,7 @@ export const LOYALTY_CARD_SHAPES = ["rect", "circle", "blob"] as const;
 export const LOYALTY_CARD_STAMP_SHAPES = ["circle", "rounded_square", "heart"] as const;
 export const LOYALTY_CARD_STAMP_RENDER_MODES = ["shape", "image"] as const;
 export const LOYALTY_CARD_STAMP_IMAGE_FITS = ["contain", "cover", "fill"] as const;
+export const LOYALTY_CARD_STAMP_FILLED_COMPOSITIONS = ["overlay", "replace"] as const;
 export const LOYALTY_CARD_STAMP_ANIMATIONS = ["none", "pop", "stamp", "bounce"] as const;
 export const LOYALTY_CARD_STAMP_DATE_FORMATS = ["short", "medium", "relative"] as const;
 export const LOYALTY_CARD_PRESET_STATUSES = ["draft", "published", "archived"] as const;
@@ -37,6 +38,7 @@ export type LoyaltyCardBackgroundAlignY = (typeof LOYALTY_CARD_BACKGROUND_ALIGN_
 export type LoyaltyCardAssetFilterPreset = (typeof LOYALTY_CARD_ASSET_FILTER_PRESETS)[number];
 export type LoyaltyCardStampRenderMode = (typeof LOYALTY_CARD_STAMP_RENDER_MODES)[number];
 export type LoyaltyCardStampImageFit = (typeof LOYALTY_CARD_STAMP_IMAGE_FITS)[number];
+export type LoyaltyCardStampFilledComposition = (typeof LOYALTY_CARD_STAMP_FILLED_COMPOSITIONS)[number];
 export type LoyaltyCardStampAnimation = (typeof LOYALTY_CARD_STAMP_ANIMATIONS)[number];
 export type LoyaltyCardStampDateFormat = (typeof LOYALTY_CARD_STAMP_DATE_FORMATS)[number];
 
@@ -144,12 +146,17 @@ export type LoyaltyCardStampGridElement = LoyaltyCardElementBase & {
   emptyStroke?: string;
   emptyStrokeWidth?: number;
   emptyImageUrl?: string;
+  emptyScale?: number;
   filledMode?: LoyaltyCardStampRenderMode;
   filledShape?: (typeof LOYALTY_CARD_STAMP_SHAPES)[number];
   filledFill?: string;
   filledStroke?: string;
   filledStrokeWidth?: number;
   filledImageUrl?: string;
+  filledImageUrls?: string[];
+  filledScale?: number;
+  filledComposition?: LoyaltyCardStampFilledComposition;
+  filledRandomRotation?: number;
   imageFit?: LoyaltyCardStampImageFit;
   imageInset?: number;
   showStampDates?: boolean;
