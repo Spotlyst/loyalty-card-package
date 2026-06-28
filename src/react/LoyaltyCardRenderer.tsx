@@ -318,7 +318,7 @@ function LoyaltyCardStampGridElementView({ element, schema, scale, tokens, anima
       key={element.id}
       style={{
         ...frame,
-        overflow: "hidden",
+        overflow: "visible",
         display: "flex",
         flexDirection: "column",
         alignItems: stampGridAlignItems(element.horizontalAlign),
