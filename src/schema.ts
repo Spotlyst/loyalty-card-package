@@ -168,7 +168,6 @@ export type LoyaltyCardStampGridElement = LoyaltyCardElementBase & {
   emptyStroke?: string;
   emptyStrokeWidth?: number;
   emptyImageUrl?: string;
-  emptyScale?: number;
   filledMode?: LoyaltyCardStampRenderMode;
   filledShape?: (typeof LOYALTY_CARD_STAMP_SHAPES)[number];
   filledFill?: string;

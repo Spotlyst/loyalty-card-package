@@ -561,7 +561,7 @@ function renderStampCell(element: LoyaltyCardStampGridElement, index: number, fi
     stroke: element.emptyStroke || element.stroke,
     strokeWidth: element.emptyStrokeWidth ?? 2,
     imageUrl: element.emptyImageUrl || "",
-    layerScale: element.emptyScale ?? 1,
+    layerScale: 1,
   };
   const filledLayer = {
     mode: element.filledMode || "shape",
