@@ -339,12 +339,12 @@ function LoyaltyCardStampGridElementView({ element, schema, scale, tokens, anima
               position: "absolute",
               left: item.x * scale,
               top: item.y * scale,
-            }, item.key, animateLayout ? "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--enter" : undefined))}
+            }, item.key, animateLayout ? "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--enter" : undefined, Boolean(animateLayout)))}
             {animateLayout ? leavingItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
               position: "absolute",
               left: item.x * scale,
               top: item.y * scale,
-            }, `leaving-${item.key}`, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--exit")) : null}
+            }, `leaving-${item.key}`, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--exit", true)) : null}
           </>
         ) : rows.map((row, rowIndex) => (
           <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
@@ -519,7 +519,7 @@ function filledStampRotation(element: LoyaltyCardStampGridElement, index: number
   return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
 }
 
-function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number, position?: CSSProperties, slotKey: string | number = index, className?: string) {
+function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number, position?: CSSProperties, slotKey: string | number = index, className?: string, suppressCellAnimation = false) {
   return (
     <span
       key={`${element.id}-${slotKey}`}
@@ -536,12 +536,12 @@ function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, fi
         ...position,
       }}
     >
-      {renderStampCell(element, index, filled, stamp, scale, stampSize)}
+      {renderStampCell(element, index, filled, stamp, scale, stampSize, suppressCellAnimation)}
     </span>
   );
 }
 
-function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number) {
+function renderStampCell(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, suppressAnimation = false) {
   const dateLabel = filled && element.showStampDates !== false ? getStampDateLabel(stamp, element.dateFormat || "short") : "";
   const label = dateLabel || (filled ? `Stamp ${index + 1} earned` : `Stamp ${index + 1} empty`);
   const baseStyle: CSSProperties = {
@@ -551,7 +551,7 @@ function renderStampCell(element: LoyaltyCardStampGridElement, index: number, fi
     position: "relative",
     display: "block",
     overflow: "visible",
-    ...stampAnimation(element, index),
+    ...(suppressAnimation ? {} : stampAnimation(element, index)),
   };
   const composition = element.filledComposition || "overlay";
   const emptyLayer = {
