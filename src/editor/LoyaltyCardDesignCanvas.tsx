@@ -20,8 +20,11 @@ type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 type SnapGuides = { x?: number; y?: number };
 type Frame = ReturnType<typeof constrainFrame>;
 type SnapCandidate = { delta: number; guide: number; distance: number };
+type StampEditorPointer = { elementId: string; x: number; y: number } | null;
 
 const SNAP_THRESHOLD = 6;
+const STAMP_CONTROL_FULL_RADIUS = 34;
+const STAMP_CONTROL_FADE_RADIUS = 112;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -373,9 +376,11 @@ export function LoyaltyCardDesignCanvas({
 }: LoyaltyCardDesignCanvasProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const autoFitRef = useRef<Record<string, string>>({});
+  const stampEditorClearTimeoutRef = useRef<number | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(900);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({});
   const [assetRatios, setAssetRatios] = useState<Record<string, number>>({});
+  const [stampEditorPointer, setStampEditorPointer] = useState<StampEditorPointer>(null);
   const activeFace = schema.faces[face] || schema.faces.front;
   const visibleElements = activeFace.elements.filter((element) => !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeFace.elements.find((element) => element.id === selectedElementIds[0]) || null : null;
@@ -391,6 +396,10 @@ export function LoyaltyCardDesignCanvas({
     });
     observer.observe(canvasRef.current);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => () => {
+    if (stampEditorClearTimeoutRef.current !== null) window.clearTimeout(stampEditorClearTimeoutRef.current);
   }, []);
 
   useEffect(() => {
@@ -653,6 +662,40 @@ export function LoyaltyCardDesignCanvas({
     onChangeElement(element.id, nextElement as LoyaltyCardElement);
   };
 
+  const updateStampEditorPointer = (event: ReactPointerEvent<HTMLDivElement>, element: LoyaltyCardElement) => {
+    if (element.type !== "stampGrid" || element.id !== selectedElement?.id || element.locked) return;
+    if (stampEditorClearTimeoutRef.current !== null) {
+      window.clearTimeout(stampEditorClearTimeoutRef.current);
+      stampEditorClearTimeoutRef.current = null;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setStampEditorPointer({
+      elementId: element.id,
+      x: (event.clientX - rect.left) / scale,
+      y: (event.clientY - rect.top) / scale,
+    });
+  };
+
+  const clearStampEditorPointer = (element: LoyaltyCardElement) => {
+    if (element.type !== "stampGrid" || stampEditorPointer?.elementId !== element.id) return;
+    if (stampEditorClearTimeoutRef.current !== null) window.clearTimeout(stampEditorClearTimeoutRef.current);
+    stampEditorClearTimeoutRef.current = window.setTimeout(() => {
+      setStampEditorPointer(null);
+      stampEditorClearTimeoutRef.current = null;
+    }, 220);
+  };
+
+  const stampControlRevealStyle = (element: LoyaltyCardStampGridElement, centerX: number, centerY: number): CSSProperties => {
+    const pointer = stampEditorPointer?.elementId === element.id ? stampEditorPointer : null;
+    const distance = pointer ? Math.hypot(pointer.x - centerX, pointer.y - centerY) : Number.POSITIVE_INFINITY;
+    const opacity = clamp((STAMP_CONTROL_FADE_RADIUS - distance) / (STAMP_CONTROL_FADE_RADIUS - STAMP_CONTROL_FULL_RADIUS), 0, 1);
+    return {
+      opacity,
+      pointerEvents: opacity > 0.12 ? "auto" : "none",
+      transform: `scale(${0.76 + opacity * 0.24})`,
+    };
+  };
+
   const renderStampGridInlineEditor = (element: LoyaltyCardElement) => {
     if (element.type !== "stampGrid" || element.id !== selectedElement?.id || element.locked) return null;
     const runtimeCount = stampGridRuntimeCount(element, tokens);
@@ -678,9 +721,9 @@ export function LoyaltyCardDesignCanvas({
                 const column = position >= slots.length ? Math.min(11, (slots[slots.length - 1]?.column ?? -1) + 1) : slots[position].column;
                 const x = columnX(column) - (position === 0 ? 14 : layout.gap / 2 + 7);
                 if (slots.length >= 12) return null;
-                return <button key={`insert-${row}-${position}`} type="button" className="loyalty-stamp-inline-editor__insert" style={{ left: x * scale, top: (y - 11) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampInRow(element, row, column, runtimeCount))} aria-label={`Insert stamp in row ${row + 1}`} />;
+                return <button key={`insert-${row}-${position}`} type="button" className="loyalty-stamp-inline-editor__insert" style={{ left: x * scale, top: (y - 11) * scale, ...stampControlRevealStyle(element, x + 11, y) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampInRow(element, row, column, runtimeCount))} aria-label={`Insert stamp in row ${row + 1}`} />;
               })}
-              <div className="loyalty-stamp-inline-editor__row-toolbar" style={{ left: (offset.x + layout.contentWidth + 8) * scale, top: (y - 12) * scale }} onPointerDown={handlePointer}>
+              <div className="loyalty-stamp-inline-editor__row-toolbar" style={{ left: (offset.x + layout.contentWidth + 8) * scale, top: (y - 12) * scale, ...stampControlRevealStyle(element, offset.x + layout.contentWidth + 47, y) }} onPointerDown={handlePointer}>
                 {(["left", "center", "right"] as const).map((align) => <button key={align} type="button" className={layout.rowAlignments[row] === align ? "loyalty-stamp-inline-editor__align loyalty-stamp-inline-editor__align--active" : "loyalty-stamp-inline-editor__align"} onClick={() => updateStampGrid(element, alignStampRow(element, row, align, runtimeCount))} aria-label={`Align row ${align}`}>{align === "left" ? "←" : align === "right" ? "→" : "•"}</button>)}
               </div>
             </div>
@@ -689,14 +732,14 @@ export function LoyaltyCardDesignCanvas({
         {layout.slots.map((slot) => {
           const row = slot.row;
           const point = slotPosition(row, slot.column);
-          return <button key={slot.id} type="button" className="loyalty-stamp-inline-editor__remove" style={{ left: (point.x + layout.cellSize - 9) * scale, top: (point.y - 9) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, removeStampSlot(element, slot.row, slot.column, runtimeCount))} aria-label={`Remove stamp ${slot.stampIndex + 1}`} />;
+          return <button key={slot.id} type="button" className="loyalty-stamp-inline-editor__remove" style={{ left: (point.x + layout.cellSize - 9) * scale, top: (point.y - 9) * scale, ...stampControlRevealStyle(element, point.x + layout.cellSize + 2, point.y + 2) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, removeStampSlot(element, slot.row, slot.column, runtimeCount))} aria-label={`Remove stamp ${slot.stampIndex + 1}`} />;
         })}
         {Array.from({ length: layout.columns }).map((_, column) => {
           const x = offset.x + column * (layout.cellSize + layout.gap) + layout.cellSize / 2;
           return (
             <div key={`column-${column}`}>
-              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y - 24) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, 0, column, runtimeCount))} aria-label={`Insert stamp above column ${column + 1}`} />
-              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y + layout.contentHeight + 2) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, layout.rows, column, runtimeCount))} aria-label={`Insert stamp below column ${column + 1}`} />
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y - 24) * scale, ...stampControlRevealStyle(element, x, offset.y - 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, 0, column, runtimeCount))} aria-label={`Insert stamp above column ${column + 1}`} />
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y + layout.contentHeight + 2) * scale, ...stampControlRevealStyle(element, x, offset.y + layout.contentHeight + 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, layout.rows, column, runtimeCount))} aria-label={`Insert stamp below column ${column + 1}`} />
             </div>
           );
         })}
@@ -766,7 +809,7 @@ export function LoyaltyCardDesignCanvas({
         event.stopPropagation();
         onSelectElement("");
       }}>
-        <LoyaltyCardRenderer schema={schema} face={face} tokens={tokens} className="loyalty-design-canvas__surface" />
+        <LoyaltyCardRenderer schema={schema} face={face} tokens={tokens} className="loyalty-design-canvas__surface" animateStampGridLayout />
         <div className="loyalty-design-canvas__overlay" aria-label="Card editor overlay">
           {snapGuides.x !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--vertical" style={{ left: snapGuides.x * scale }} /> : null}
           {snapGuides.y !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--horizontal" style={{ top: snapGuides.y * scale }} /> : null}
@@ -777,6 +820,8 @@ export function LoyaltyCardDesignCanvas({
               tabIndex={0}
               className={["loyalty-design-canvas__element", selectedElementIds.includes(element.id) && !groupSelectedElementIds.has(element.id) ? "loyalty-design-canvas__element--selected" : "", element.locked ? "loyalty-design-canvas__element--locked" : ""].filter(Boolean).join(" ")}
               style={overlayElementStyle(element, scale)}
+              onPointerMove={(event) => updateStampEditorPointer(event, element)}
+              onPointerLeave={() => clearStampEditorPointer(element)}
               onPointerDown={(event) => element.locked ? event.stopPropagation() : startDrag(event, element)}
             >
               {element.locked ? null : renderHandles(element)}

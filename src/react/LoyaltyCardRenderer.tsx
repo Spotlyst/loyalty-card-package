@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { findLoyaltyCardFont, legacyLoyaltyCardFontMap } from "../fonts.js";
 import { resolveLoyaltyCardToken, resolveLoyaltyCardTokenValue, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardTokens } from "../schema.js";
@@ -10,10 +10,23 @@ export type LoyaltyCardRendererProps = {
   tokens?: LoyaltyCardTokens;
   className?: string;
   style?: CSSProperties;
+  animateStampGridLayout?: boolean;
+};
+
+type StampGridRenderItem = {
+  key: string;
+  stampIndex: number;
+  filled: boolean;
+  stamp: unknown;
+  x: number;
+  y: number;
+  cellSize: number;
+  stampSize: number;
 };
 
 const loadedFontKeys = new Set<string>();
 let stampAnimationStylesLoaded = false;
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const assetFilterPresets = {
   none: { filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
@@ -120,7 +133,13 @@ function useStampAnimationStyles() {
     style.textContent = `
 @keyframes spotlyst-stamp-pop{0%{transform:scale(.82);opacity:.35}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes spotlyst-stamp-stamp{0%{transform:translateY(-12%) scale(1.35) rotate(-8deg);opacity:0}55%{transform:translateY(2%) scale(.94) rotate(2deg);opacity:1}100%{transform:translateY(0) scale(1) rotate(0);opacity:1}}
-@keyframes spotlyst-stamp-bounce{0%{transform:scale(.9);opacity:.5}45%{transform:scale(1.18);opacity:1}70%{transform:scale(.96)}100%{transform:scale(1)}}`;
+@keyframes spotlyst-stamp-bounce{0%{transform:scale(.9);opacity:.5}45%{transform:scale(1.18);opacity:1}70%{transform:scale(.96)}100%{transform:scale(1)}}
+@keyframes spotlyst-stamp-slot-enter{0%{transform:scale(.82);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes spotlyst-stamp-slot-exit{0%{transform:scale(1);opacity:1}100%{transform:scale(.72);opacity:0}}
+.spotlyst-stamp-grid-slot--motion{transition:left 210ms cubic-bezier(.22,1,.36,1),top 210ms cubic-bezier(.22,1,.36,1),width 210ms cubic-bezier(.22,1,.36,1),height 210ms cubic-bezier(.22,1,.36,1),opacity 150ms ease,transform 210ms cubic-bezier(.22,1,.36,1);will-change:left,top,width,height,opacity,transform;}
+.spotlyst-stamp-grid-slot--enter{animation:spotlyst-stamp-slot-enter 180ms cubic-bezier(.22,1,.36,1) both;}
+.spotlyst-stamp-grid-slot--exit{animation:spotlyst-stamp-slot-exit 160ms ease both;pointer-events:none;}
+@media (prefers-reduced-motion: reduce){.spotlyst-stamp-grid-slot--motion,.spotlyst-stamp-grid-slot--motion *{transition:none!important;animation:none!important}}`;
     document.head.appendChild(style);
     stampAnimationStylesLoaded = true;
   }, []);
@@ -215,7 +234,130 @@ function stampRowJustifyContent(align: "left" | "center" | "right"): CSSProperti
   return "center";
 }
 
-function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSchema, scale: number, tokens: LoyaltyCardTokens) {
+function buildStampGridRenderItems(element: LoyaltyCardStampGridElement, stampLayout: ReturnType<typeof resolveFittedStampGridLayout>, filled: number, stamps: unknown[]) {
+  const slotsByRow = Array.from({ length: stampLayout.rows }).map((_, row) => stampLayout.slots.filter((slot) => slot.row === row).sort((a, b) => a.column - b.column));
+  const rowStartX = (row: number) => {
+    const slots = slotsByRow[row] || [];
+    if (stampLayout.usesExplicitSlots) return 0;
+    const rowWidth = slots.length * stampLayout.cellSize + Math.max(0, slots.length - 1) * stampLayout.gap;
+    const align = stampLayout.rowAlignments[row] || element.horizontalAlign || "center";
+    if (align === "left") return 0;
+    if (align === "right") return stampLayout.contentWidth - rowWidth;
+    return (stampLayout.contentWidth - rowWidth) / 2;
+  };
+
+  return stampLayout.slots.map((slot): StampGridRenderItem => {
+    const rowSlots = slotsByRow[slot.row] || [];
+    const position = Math.max(0, rowSlots.findIndex((candidate) => candidate.id === slot.id));
+    const x = stampLayout.usesExplicitSlots ? slot.column * (stampLayout.cellSize + stampLayout.gap) : rowStartX(slot.row) + position * (stampLayout.cellSize + stampLayout.gap);
+    const y = slot.row * (stampLayout.cellSize + stampLayout.gap);
+    return {
+      key: stampLayout.usesExplicitSlots ? slot.id : String(slot.stampIndex),
+      stampIndex: slot.stampIndex,
+      filled: slot.stampIndex < filled,
+      stamp: stamps[slot.stampIndex],
+      x,
+      y,
+      cellSize: stampLayout.cellSize,
+      stampSize: stampLayout.stampSize,
+    };
+  });
+}
+
+function LoyaltyCardStampGridElementView({ element, schema, scale, tokens, animateLayout }: { element: LoyaltyCardStampGridElement; schema: LoyaltyCardDesignSchema; scale: number; tokens: LoyaltyCardTokens; animateLayout?: boolean }) {
+  const frame = elementFrame(element, schema, scale);
+  const count = Math.max(1, Math.min(100, Number(resolveLoyaltyCardToken(element.countToken, tokens)) || element.count || 10));
+  const stampData = resolveLoyaltyCardTokenValue(element.stampDataToken || "{{stamps}}", tokens);
+  const stamps = Array.isArray(stampData) ? stampData : [];
+  const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
+  const stampLayout = resolveFittedStampGridLayout(element, count);
+  const currentItems = buildStampGridRenderItems(element, stampLayout, filled, stamps);
+  const [leavingItems, setLeavingItems] = useState<StampGridRenderItem[]>([]);
+  const previousItemsRef = useRef<StampGridRenderItem[]>(currentItems);
+  const timeoutsRef = useRef<number[]>([]);
+  const itemSignature = currentItems.map((item) => `${item.key}:${item.x}:${item.y}:${item.cellSize}:${item.stampSize}`).join("|");
+
+  useIsomorphicLayoutEffect(() => {
+    if (!animateLayout) {
+      previousItemsRef.current = currentItems;
+      return;
+    }
+    const currentKeys = new Set(currentItems.map((item) => item.key));
+    const removedItems = previousItemsRef.current.filter((item) => !currentKeys.has(item.key));
+    if (removedItems.length) {
+      setLeavingItems((items) => [...items.filter((item) => !removedItems.some((removed) => removed.key === item.key)), ...removedItems]);
+      const timeout = window.setTimeout(() => {
+        setLeavingItems((items) => items.filter((item) => !removedItems.some((removed) => removed.key === item.key)));
+      }, 190);
+      timeoutsRef.current.push(timeout);
+    }
+    previousItemsRef.current = currentItems;
+  }, [animateLayout, itemSignature]);
+
+  useEffect(() => () => {
+    timeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
+  }, []);
+
+  let stampIndex = 0;
+  const rows = stampLayout.rowCounts.map((rowCount, rowIndex) => ({
+    align: stampLayout.rowAlignments[rowIndex] || "center",
+    indexes: Array.from({ length: Math.max(0, rowCount) }).map(() => stampIndex++),
+  }));
+  const slotStyle = stampLayout.usesExplicitSlots ? {
+    display: "grid",
+    gridTemplateColumns: `repeat(${stampLayout.columns}, ${stampLayout.cellSize * scale}px)`,
+    gridTemplateRows: `repeat(${stampLayout.rows}, ${stampLayout.cellSize * scale}px)`,
+    gap: stampLayout.gap * scale,
+  } : {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: stampLayout.gap * scale,
+  };
+
+  return (
+    <div
+      key={element.id}
+      style={{
+        ...frame,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: stampGridAlignItems(element.horizontalAlign),
+        justifyContent: stampGridJustifyContent(element.verticalAlign),
+      }}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          width: stampLayout.contentWidth * scale,
+          height: stampLayout.contentHeight * scale,
+          ...(animateLayout ? { position: "relative" as const } : slotStyle),
+        }}
+      >
+        {animateLayout ? (
+          <>
+            {currentItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
+              position: "absolute",
+              left: item.x * scale,
+              top: item.y * scale,
+            }, item.key, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--enter"))}
+            {leavingItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
+              position: "absolute",
+              left: item.x * scale,
+              top: item.y * scale,
+            }, `leaving-${item.key}`, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--exit"))}
+          </>
+        ) : stampLayout.usesExplicitSlots ? stampLayout.slots.map((slot) => renderStampSlot(element, slot.stampIndex, slot.stampIndex < filled, stamps[slot.stampIndex], scale, stampLayout.stampSize, stampLayout.cellSize, { gridColumn: slot.column + 1, gridRow: slot.row + 1 }, slot.id)) : rows.map((row, rowIndex) => (
+          <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
+            {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSchema, scale: number, tokens: LoyaltyCardTokens, options?: { animateStampGridLayout?: boolean }) {
   const frame = elementFrame(element, schema, scale);
 
   if (element.type === "text") {
@@ -308,54 +450,7 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
   }
 
   if (element.type === "stampGrid") {
-    const count = Math.max(1, Math.min(100, Number(resolveLoyaltyCardToken(element.countToken, tokens)) || element.count || 10));
-    const stampData = resolveLoyaltyCardTokenValue(element.stampDataToken || "{{stamps}}", tokens);
-    const stamps = Array.isArray(stampData) ? stampData : [];
-    const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
-    const stampLayout = resolveFittedStampGridLayout(element, count);
-    let stampIndex = 0;
-    const rows = stampLayout.rowCounts.map((rowCount, rowIndex) => ({
-      align: stampLayout.rowAlignments[rowIndex] || "center",
-      indexes: Array.from({ length: Math.max(0, rowCount) }).map(() => stampIndex++),
-    }));
-    const slotStyle = stampLayout.usesExplicitSlots ? {
-      display: "grid",
-      gridTemplateColumns: `repeat(${stampLayout.columns}, ${stampLayout.cellSize * scale}px)`,
-      gridTemplateRows: `repeat(${stampLayout.rows}, ${stampLayout.cellSize * scale}px)`,
-      gap: stampLayout.gap * scale,
-    } : {
-      display: "flex",
-      flexDirection: "column" as const,
-      gap: stampLayout.gap * scale,
-    };
-    return (
-      <div
-        key={element.id}
-        style={{
-          ...frame,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: stampGridAlignItems(element.horizontalAlign),
-          justifyContent: stampGridJustifyContent(element.verticalAlign),
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            width: stampLayout.contentWidth * scale,
-            height: stampLayout.contentHeight * scale,
-            ...slotStyle,
-          }}
-        >
-          {stampLayout.usesExplicitSlots ? stampLayout.slots.map((slot) => renderStampSlot(element, slot.stampIndex, slot.stampIndex < filled, stamps[slot.stampIndex], scale, stampLayout.stampSize, stampLayout.cellSize, { gridColumn: slot.column + 1, gridRow: slot.row + 1 })) : rows.map((row, rowIndex) => (
-              <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
-                {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
-              </div>
-            ))}
-        </div>
-      </div>
-    );
+    return <LoyaltyCardStampGridElementView key={element.id} element={element} schema={schema} scale={scale} tokens={tokens} animateLayout={options?.animateStampGridLayout} />;
   }
 
   return null;
@@ -425,10 +520,11 @@ function filledStampRotation(element: LoyaltyCardStampGridElement, index: number
   return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
 }
 
-function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number, position?: CSSProperties) {
+function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number, position?: CSSProperties, slotKey: string | number = index, className?: string) {
   return (
     <span
-      key={`${element.id}-${index}`}
+      key={`${element.id}-${slotKey}`}
+      className={className}
       aria-hidden="true"
       style={{
         width: cellSize * scale,
@@ -519,7 +615,7 @@ function renderStampCell(element: LoyaltyCardStampGridElement, index: number, fi
   );
 }
 
-export function LoyaltyCardRenderer({ schema, face, tokens = {}, className = "", style }: LoyaltyCardRendererProps) {
+export function LoyaltyCardRenderer({ schema, face, tokens = {}, className = "", style, animateStampGridLayout = false }: LoyaltyCardRendererProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(720);
   const activeFace = schema.faces[face] || schema.faces.front;
@@ -557,7 +653,7 @@ export function LoyaltyCardRenderer({ schema, face, tokens = {}, className = "",
       }}
     >
       {renderBackgroundLayer(activeFace.background, schema)}
-      {visibleElements.map((element) => renderElement(element, schema, scale, tokens))}
+      {visibleElements.map((element) => renderElement(element, schema, scale, tokens, { animateStampGridLayout }))}
     </div>
   );
 }
