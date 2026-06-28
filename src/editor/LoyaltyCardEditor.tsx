@@ -13,7 +13,6 @@ import {
   Clock01Icon,
   ColorPickerIcon,
   ColorsIcon,
-  ColumnInsertIcon,
   ContrastIcon,
   BlurIcon,
   DropletsIcon,
@@ -1885,16 +1884,6 @@ export function LoyaltyCardEditor({
                       <div className="loyalty-inspector-form">
                         <InspectorSection icon={GridTableIcon} label="Stamp grid" />
                         <StampLayoutControl element={selectedElement} onChange={(next) => updateSelectedStampGrid(next)} />
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Stamp scale" /><input type="number" min="16" max="220" value={Math.round(resolveStampScale(selectedElement))} onChange={(event) => updateSelectedStampGrid({ stampSize: clampNumber(Number(event.target.value), 16, 220) })} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Stamp slots" /><input type="number" value={selectedElement.count} onChange={(event) => {
-                            const count = clampNumber(Number(event.target.value), 1, 100);
-                            updateSelectedStampGrid({ count, previewFilledCount: clampNumber(Number(selectedElement.previewFilledCount || 0), 0, count), countToken: "", filledToken: "" });
-                          }} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Filled preview" /><input type="number" value={resolvePreviewFilledCount(selectedElement)} onChange={(event) => updateSelectedStampGrid({ previewFilledCount: clampNumber(Number(event.target.value), 0, selectedElement.count || 1) })} /></label>
-                          <label className="field field--icon"><IconLabel icon={GridTableIcon} label="Gap scale" /><input type="number" value={selectedElement.gap} onChange={(event) => updateSelectedStampGrid({ gap: clampNumber(Number(event.target.value), 0, 80) })} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColumnInsertIcon} label="Columns" /><input type="number" value={selectedElement.columns} onChange={(event) => updateSelectedStampGrid({ columns: clampNumber(Number(event.target.value), 1, 12) })} /></label>
-                        </div>
 
                         <details className="loyalty-advanced-section">
                           <summary>Live data tokens</summary>
