@@ -1052,50 +1052,112 @@
   padding: 10px;
 }
 
-.loyalty-stamp-layout-control__preview {
-  min-height: 136px;
-  max-height: 220px;
-  overflow: auto;
+.loyalty-stamp-builder {
+  display: grid;
+  gap: 8px;
   border: 1px solid var(--stroke);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px;
 }
 
-.loyalty-stamp-layout-control__preview--overflow {
-  border-color: rgb(245 158 11 / 0.8);
-  box-shadow: 0 0 0 2px rgb(245 158 11 / 0.16);
+.loyalty-stamp-builder__rows {
+  display: grid;
+  gap: 8px;
 }
 
-.loyalty-stamp-layout-control__dots {
-  display: flex;
-  flex-wrap: wrap;
+.loyalty-stamp-builder__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
   gap: 6px;
-  width: 100%;
-  height: 100%;
-  align-content: flex-start;
-  justify-content: center;
+  align-items: center;
 }
 
-.loyalty-stamp-layout-control__dots--h-left { justify-content: flex-start; }
-.loyalty-stamp-layout-control__dots--h-center { justify-content: center; }
-.loyalty-stamp-layout-control__dots--h-right { justify-content: flex-end; }
-.loyalty-stamp-layout-control__dots--v-top { align-content: flex-start; }
-.loyalty-stamp-layout-control__dots--v-center { align-content: center; }
-.loyalty-stamp-layout-control__dots--v-bottom { align-content: flex-end; }
+.loyalty-stamp-builder__cells {
+  display: flex;
+  gap: 7px;
+  min-height: 30px;
+  align-items: center;
+}
 
-.loyalty-stamp-layout-control__dots span {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--accent-border);
+.loyalty-stamp-builder__cells--left { justify-content: flex-start; }
+.loyalty-stamp-builder__cells--center { justify-content: center; }
+.loyalty-stamp-builder__cells--right { justify-content: flex-end; }
+
+.loyalty-stamp-builder__edge,
+.loyalty-stamp-builder__row-add,
+.loyalty-stamp-builder__align-button,
+.loyalty-stamp-builder__stamp {
+  border: 1px solid var(--stroke);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.loyalty-stamp-builder__edge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+}
+
+.loyalty-stamp-builder__row-add {
+  min-height: 28px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.loyalty-stamp-builder__stamp {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-color: var(--accent-border);
   border-radius: 999px;
   background: var(--surface);
   box-shadow: inset 0 0 0 4px var(--accent-soft);
 }
 
-.loyalty-stamp-layout-control__dots .loyalty-stamp-layout-control__dot--filled {
+.loyalty-stamp-builder__stamp::after {
+  content: "-";
+  position: absolute;
+  inset: -5px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(239 68 68 / 0.88);
+  color: #ffffff;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.loyalty-stamp-builder__stamp:hover::after,
+.loyalty-stamp-builder__stamp:focus-visible::after {
+  opacity: 1;
+}
+
+.loyalty-stamp-builder__stamp--filled {
   background: var(--accent);
   box-shadow: inset 0 0 0 4px rgb(255 255 255 / 0.24);
+}
+
+.loyalty-stamp-builder__align {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.loyalty-stamp-builder__align-button {
+  min-height: 22px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+}
+
+.loyalty-stamp-builder__align-button--active {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .loyalty-stamp-layout-control__tools {

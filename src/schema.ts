@@ -136,10 +136,16 @@ export type LoyaltyCardLineElement = LoyaltyCardElementBase & {
   strokeWidth: number;
 };
 
+export type LoyaltyCardStampRow = {
+  count: number;
+  align?: LoyaltyCardStampHorizontalAlign;
+};
+
 export type LoyaltyCardStampGridElement = LoyaltyCardElementBase & {
   type: "stampGrid";
   columns: number;
   count: number;
+  stampRows?: LoyaltyCardStampRow[];
   countToken: string;
   filledToken?: string;
   stampDataToken?: string;

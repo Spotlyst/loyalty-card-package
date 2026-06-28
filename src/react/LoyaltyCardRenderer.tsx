@@ -209,6 +209,12 @@ function stampGridJustifyContent(align: LoyaltyCardStampGridElement["verticalAli
   return "center";
 }
 
+function stampRowJustifyContent(align: "left" | "center" | "right"): CSSProperties["justifyContent"] {
+  if (align === "left") return "flex-start";
+  if (align === "right") return "flex-end";
+  return "center";
+}
+
 function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSchema, scale: number, tokens: LoyaltyCardTokens) {
   const frame = elementFrame(element, schema, scale);
 
@@ -307,11 +313,11 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
     const stamps = Array.isArray(stampData) ? stampData : [];
     const filled = Math.max(0, Math.min(count, element.filledToken ? Number(resolveLoyaltyCardToken(element.filledToken, tokens)) || 0 : stamps.length));
     const stampLayout = resolveFittedStampGridLayout(element, count);
-    const rows = Array.from({ length: stampLayout.rows }).map((_, rowIndex) => {
-      const startIndex = rowIndex * stampLayout.columns;
-      const rowCount = Math.min(stampLayout.columns, count - startIndex);
-      return Array.from({ length: Math.max(0, rowCount) }).map((__, columnIndex) => startIndex + columnIndex);
-    });
+    let stampIndex = 0;
+    const rows = stampLayout.rowCounts.map((rowCount, rowIndex) => ({
+      align: stampLayout.rowAlignments[rowIndex] || "center",
+      indexes: Array.from({ length: Math.max(0, rowCount) }).map(() => stampIndex++),
+    }));
     return (
       <div
         key={element.id}
@@ -335,8 +341,8 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
           }}
         >
           {rows.map((row, rowIndex) => (
-            <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: "center", gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
-              {row.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
+            <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
+              {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
             </div>
           ))}
         </div>

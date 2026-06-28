@@ -2,7 +2,7 @@ import { findLoyaltyCardFont, getLoyaltyCardFontCategoryLabel, legacyLoyaltyCard
 import type { LoyaltyCardFontCatalogItem } from "../fonts.js";
 import { normalizeLoyaltyCardLayerOrder, normalizeLoyaltyCardPreset } from "../normalize.js";
 import { LOYALTY_CARD_CANVAS_HEIGHT, LOYALTY_CARD_CANVAS_WIDTH, LOYALTY_CARD_FACE_KEYS } from "../schema.js";
-import { resolveStampGridColumns as resolveStampColumns, resolveStampGridCount as resolveStampCount, resolveStampGridScale as resolveStampScale } from "../stampGridLayout.js";
+import { resolveStampGridColumns as resolveStampColumns, resolveStampGridCount as resolveStampCount, resolveStampGridRows, resolveStampGridScale as resolveStampScale } from "../stampGridLayout.js";
 import {
   AlignLeftIcon,
   AlignVerticalCenterIcon,
@@ -155,31 +155,63 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
   const previewFilledCount = resolvePreviewFilledCount(element);
   const stampScale = Math.round(resolveStampScale(element));
   const gap = Math.round(element.gap || 0);
-  const columns = resolveStampColumns(element);
-  const horizontalAlign = element.horizontalAlign || "center";
+  const stampRows = resolveStampGridRows(element);
   const verticalAlign = element.verticalAlign || "top";
-  const horizontalOptions = ["left", "center", "right"] as const;
+  const rowAlignOptions = ["left", "center", "right"] as const;
   const verticalOptions = ["top", "center", "bottom"] as const;
 
   const applyChanges = (next: Partial<LoyaltyCardStampGridElement>) => onChange(next);
+  const applyRows = (nextRows: Array<{ count: number; align: "left" | "center" | "right" }>) => {
+    const sanitizedRows = nextRows.map((row) => ({ count: clampNumber(Math.floor(Number(row.count) || 0), 0, 12), align: row.align || "center" })).filter((row) => row.count > 0).slice(0, 20);
+    const nextCount = clampNumber(sanitizedRows.reduce((sum, row) => sum + row.count, 0), 1, 100);
+    applyChanges({
+      stampRows: sanitizedRows,
+      count: nextCount,
+      columns: Math.max(1, ...sanitizedRows.map((row) => row.count)),
+      previewFilledCount: clampNumber(previewFilledCount, 0, nextCount),
+      countToken: "",
+      filledToken: "",
+    });
+  };
 
-  const stepCount = (delta: number) => applyChanges({ count: clampNumber(count + delta, 1, 100), previewFilledCount: clampNumber(previewFilledCount, 0, clampNumber(count + delta, 1, 100)), countToken: "", filledToken: "" });
+  const addRow = (index: number) => applyRows([...stampRows.slice(0, index), { count: Math.min(Math.max(1, resolveStampColumns(element)), 12), align: "center" }, ...stampRows.slice(index)]);
+  const addStampToRow = (rowIndex: number) => {
+    if (count >= 100) return;
+    applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, count: Math.min(12, row.count + 1) } : row));
+  };
+  const removeStampFromRow = (rowIndex: number) => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, count: row.count - 1 } : row));
+  const alignRow = (rowIndex: number, align: "left" | "center" | "right") => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, align } : row));
   const stepFilled = (delta: number) => applyChanges({ previewFilledCount: clampNumber(previewFilledCount + delta, 0, count) });
   const stepSize = (delta: number) => applyChanges({ stampSize: clampNumber(stampScale + delta, 16, 220) });
   const stepGap = (delta: number) => applyChanges({ gap: clampNumber(gap + delta, 0, 80) });
-  const stepColumns = (delta: number) => applyChanges({ columns: clampNumber(columns + delta, 1, 12) });
 
   return (
     <div className="loyalty-stamp-layout-control">
-      <div className="loyalty-stamp-layout-control__preview" aria-hidden="true">
-        <div className={`loyalty-stamp-layout-control__dots loyalty-stamp-layout-control__dots--h-${horizontalAlign} loyalty-stamp-layout-control__dots--v-${verticalAlign}`}>
-          {Array.from({ length: count }).map((_, index) => <span key={index} className={index < previewFilledCount ? "loyalty-stamp-layout-control__dot--filled" : undefined} />)}
+      <div className="loyalty-stamp-builder" aria-label="Stamp layout builder">
+        <button type="button" className="loyalty-stamp-builder__row-add" onClick={() => addRow(0)}>+ Add row above</button>
+        <div className="loyalty-stamp-builder__rows">
+          {stampRows.map((row, rowIndex) => (
+            <div key={rowIndex} className="loyalty-stamp-builder__row">
+              <button type="button" className="loyalty-stamp-builder__edge" onClick={() => addStampToRow(rowIndex)} aria-label={`Add stamp to row ${rowIndex + 1}`}>+</button>
+              <div className={`loyalty-stamp-builder__cells loyalty-stamp-builder__cells--${row.align}`}>
+                {Array.from({ length: row.count }).map((_, stampIndex) => {
+                  const absoluteIndex = stampRows.slice(0, rowIndex).reduce((sum, item) => sum + item.count, 0) + stampIndex;
+                  return <button key={stampIndex} type="button" className={absoluteIndex < previewFilledCount ? "loyalty-stamp-builder__stamp loyalty-stamp-builder__stamp--filled" : "loyalty-stamp-builder__stamp"} onClick={() => removeStampFromRow(rowIndex)} aria-label={`Remove stamp ${absoluteIndex + 1}`} />;
+                })}
+              </div>
+              <button type="button" className="loyalty-stamp-builder__edge" onClick={() => addStampToRow(rowIndex)} aria-label={`Add stamp to row ${rowIndex + 1}`}>+</button>
+              <div className="loyalty-stamp-builder__align" aria-label={`Align row ${rowIndex + 1}`}>
+                {rowAlignOptions.map((align) => <button key={align} type="button" className={row.align === align ? "loyalty-stamp-builder__align-button loyalty-stamp-builder__align-button--active" : "loyalty-stamp-builder__align-button"} aria-label={`Align row ${align}`} aria-pressed={row.align === align} onClick={() => alignRow(rowIndex, align)}>{align[0].toUpperCase()}</button>)}
+              </div>
+            </div>
+          ))}
         </div>
+        <button type="button" className="loyalty-stamp-builder__row-add" onClick={() => addRow(stampRows.length)}>+ Add row below</button>
       </div>
       <div className="loyalty-stamp-layout-control__tools">
         <div className="loyalty-stamp-stepper">
-          <span>Stamp slots</span>
-          <div><button type="button" onClick={() => stepCount(-1)}>-</button><strong>{count}</strong><button type="button" onClick={() => stepCount(1)}>+</button></div>
+          <span>Total slots</span>
+          <div><button type="button" disabled>-</button><strong>{count}</strong><button type="button" disabled>+</button></div>
         </div>
         <div className="loyalty-stamp-stepper">
           <span>Filled preview</span>
@@ -193,16 +225,12 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
           <span>Gap scale</span>
           <div><button type="button" onClick={() => stepGap(-2)}>-</button><strong>{gap}</strong><button type="button" onClick={() => stepGap(2)}>+</button></div>
         </div>
-        <div className="loyalty-stamp-stepper">
-          <span>Columns</span>
-          <div><button type="button" onClick={() => stepColumns(-1)}>-</button><strong>{columns}</strong><button type="button" onClick={() => stepColumns(1)}>+</button></div>
-        </div>
       </div>
       <div className="loyalty-stamp-align-grid" aria-label="Stamp grid alignment">
-        {verticalOptions.flatMap((vertical) => horizontalOptions.map((horizontal) => {
-          const active = horizontalAlign === horizontal && verticalAlign === vertical;
-          return <button key={`${vertical}-${horizontal}`} type="button" className={active ? "loyalty-stamp-align-grid__button loyalty-stamp-align-grid__button--active" : "loyalty-stamp-align-grid__button"} aria-label={`Align ${vertical} ${horizontal}`} aria-pressed={active} onClick={() => onChange({ horizontalAlign: horizontal, verticalAlign: vertical })}><span /></button>;
-        }))}
+        {verticalOptions.map((vertical) => {
+          const active = verticalAlign === vertical;
+          return <button key={vertical} type="button" className={active ? "loyalty-stamp-align-grid__button loyalty-stamp-align-grid__button--active" : "loyalty-stamp-align-grid__button"} aria-label={`Align grid ${vertical}`} aria-pressed={active} onClick={() => onChange({ verticalAlign: vertical })}><span /></button>;
+        })}
       </div>
     </div>
   );
@@ -643,7 +671,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
     return { ...base, type, color: "#111827", strokeWidth: 4 };
   }
 
-  return { ...base, type, width: 344, height: 128, columns: 5, count: 10, countToken: "", filledToken: "", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", emptyScale: 1, filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, previewFilledCount: 0, autoFitContainer: false, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
+  return { ...base, type, width: 344, height: 128, columns: 4, count: 8, stampRows: [{ count: 4, align: "center" }, { count: 4, align: "center" }], countToken: "", filledToken: "", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", emptyScale: 1, filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, previewFilledCount: 0, autoFitContainer: false, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
 }
 
 function clampNumber(value: number, min: number, max: number) {

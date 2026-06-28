@@ -4,6 +4,8 @@ export type FittedStampGridLayout = {
   count: number;
   columns: number;
   rows: number;
+  rowCounts: number[];
+  rowAlignments: Array<"left" | "center" | "right">;
   cellSize: number;
   stampSize: number;
   gap: number;
@@ -30,6 +32,38 @@ export function resolveStampGridScale(element: LoyaltyCardStampGridElement) {
   return clampNumber(Number(element.stampSize), 16, 220, 56);
 }
 
+function sanitizeStampRows(element: LoyaltyCardStampGridElement) {
+  if (!Array.isArray(element.stampRows)) return [];
+  let total = 0;
+  const rows: Array<{ count: number; align: "left" | "center" | "right" }> = [];
+  for (const row of element.stampRows) {
+    const count = Math.floor(clampNumber(Number(row?.count), 0, 12, 0));
+    if (count <= 0) continue;
+    const align = row?.align === "left" || row?.align === "right" ? row.align : "center";
+    const nextCount = Math.min(count, 100 - total);
+    if (nextCount <= 0) break;
+    rows.push({ count: nextCount, align });
+    total += nextCount;
+    if (total >= 100 || rows.length >= 20) break;
+  }
+  return rows;
+}
+
+export function resolveStampGridRows(element: LoyaltyCardStampGridElement, runtimeCount?: number) {
+  const designRows = sanitizeStampRows(element);
+  const designCount = designRows.reduce((sum, row) => sum + row.count, 0);
+  const hasRuntimeOverride = runtimeCount !== undefined && Number.isFinite(runtimeCount) && runtimeCount > 0 && Math.floor(runtimeCount) !== designCount;
+  if (designRows.length > 0 && !hasRuntimeOverride) return designRows;
+
+  const count = resolveStampGridCount(element, runtimeCount);
+  const columns = Math.min(count, resolveStampGridColumns(element));
+  const rows = Math.max(1, Math.ceil(count / columns));
+  return Array.from({ length: rows }).map((_, rowIndex) => {
+    const remaining = count - rowIndex * columns;
+    return { count: Math.min(columns, remaining), align: element.horizontalAlign || "center" };
+  }).filter((row) => row.count > 0);
+}
+
 function resolveStampArtExpansion(element: LoyaltyCardStampGridElement) {
   const hasEmptyImage = element.emptyMode === "image" && Boolean(element.emptyImageUrl);
   const hasFilledImage = element.filledMode === "image" && Boolean(element.filledImageUrl || element.filledImageUrls?.length);
@@ -41,9 +75,12 @@ function resolveStampArtExpansion(element: LoyaltyCardStampGridElement) {
 }
 
 export function resolveFittedStampGridLayout(element: LoyaltyCardStampGridElement, runtimeCount?: number): FittedStampGridLayout {
-  const count = resolveStampGridCount(element, runtimeCount);
-  const columns = Math.min(count, resolveStampGridColumns(element));
-  const rows = Math.max(1, Math.ceil(count / columns));
+  const stampRows = resolveStampGridRows(element, runtimeCount);
+  const rowCounts = stampRows.map((row) => row.count);
+  const rowAlignments = stampRows.map((row) => row.align);
+  const count = rowCounts.reduce((sum, rowCount) => sum + rowCount, 0) || 1;
+  const columns = Math.max(1, ...rowCounts);
+  const rows = Math.max(1, rowCounts.length);
   const stampScale = resolveStampGridScale(element);
   const gapScale = clampNumber(Number(element.gap), 0, 80, 0);
   const boxWidth = Math.max(1, clampNumber(Number(element.width), 1, Number.MAX_SAFE_INTEGER, 1));
@@ -61,6 +98,8 @@ export function resolveFittedStampGridLayout(element: LoyaltyCardStampGridElemen
     count,
     columns,
     rows,
+    rowCounts,
+    rowAlignments,
     cellSize,
     stampSize,
     gap,
