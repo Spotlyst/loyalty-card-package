@@ -120,7 +120,7 @@ export function resolveFittedStampGridLayout(element: LoyaltyCardStampGridElemen
   const slotColumns = Math.max(1, ...slots.map((slot) => slot.column + 1));
   const rowCounts = stampRows.map((row) => row.count);
   const count = slots.length || rowCounts.reduce((sum, rowCount) => sum + rowCount, 0) || 1;
-  const columns = slotLayout.length > 0 && !hasRuntimeSlotOverride ? Math.max(resolveStampGridColumns(element), slotColumns) : Math.max(1, ...rowCounts);
+  const columns = slotLayout.length > 0 && !hasRuntimeSlotOverride ? slotColumns : Math.max(1, ...rowCounts);
   const rows = slotLayout.length > 0 && !hasRuntimeSlotOverride ? slotRows : Math.max(1, rowCounts.length);
   const effectiveRowCounts = Array.from({ length: rows }).map((_, rowIndex) => slots.filter((slot) => slot.row === rowIndex).length || rowCounts[rowIndex] || 0);
   const rowAlignments = Array.from({ length: rows }).map((_, rowIndex) => stampRows[rowIndex]?.align || element.stampRows?.[rowIndex]?.align || element.horizontalAlign || "center");

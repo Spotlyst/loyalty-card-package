@@ -141,6 +141,25 @@ function withStampSlots(element: LoyaltyCardStampGridElement, slots: LoyaltyCard
   };
 }
 
+function reflowStampSlotsByRowAlignment(element: LoyaltyCardStampGridElement, slots: LoyaltyCardStampSlot[]) {
+  if (!slots.length) return element;
+  const rows = Array.from(new Set(slots.map((slot) => slot.row))).sort((a, b) => a - b);
+  const alignments = rows.map((oldRow) => element.stampRows?.[oldRow]?.align || "center");
+  const rowSlots = rows.map((row) => slots.filter((slot) => slot.row === row).sort((a, b) => a.column - b.column));
+  const columns = Math.max(1, ...rowSlots.map((items) => items.length));
+  const shiftedSlots = rowSlots.flatMap((items, rowIndex) => {
+    const oldRow = rows[rowIndex];
+    const align = element.stampRows?.[oldRow]?.align || "center";
+    const start = align === "right" ? columns - items.length : align === "left" ? 0 : Math.floor((columns - items.length) / 2);
+    return items.map((slot, index) => ({ ...slot, row: rowIndex, column: Math.max(0, start) + index }));
+  });
+  const nextElement = withStampSlots(element, shiftedSlots, columns);
+  return {
+    ...nextElement,
+    stampRows: nextElement.stampRows?.map((row, index) => ({ ...row, align: alignments[index] || row.align || "center" })),
+  };
+}
+
 function insertStampInRow(element: LoyaltyCardStampGridElement, row: number, column: number, runtimeCount?: number) {
   const layout = resolveFittedStampGridLayout(element, runtimeCount);
   const slots = stampSlotsFromElement(element, runtimeCount);
@@ -160,13 +179,12 @@ function insertStampRow(element: LoyaltyCardStampGridElement, row: number, colum
 }
 
 function removeStampSlot(element: LoyaltyCardStampGridElement, row: number, column: number, runtimeCount?: number) {
-  const layout = resolveFittedStampGridLayout(element, runtimeCount);
   const slots = stampSlotsFromElement(element, runtimeCount);
   if (slots.length <= 1) return element;
   const remaining = slots
     .filter((slot) => !(slot.row === row && slot.column === column))
     .map((slot) => slot.row === row && slot.column > column ? { ...slot, column: slot.column - 1 } : slot);
-  return withStampSlots(element, remaining, layout.columns);
+  return reflowStampSlotsByRowAlignment(element, remaining);
 }
 
 function alignStampRow(element: LoyaltyCardStampGridElement, row: number, align: "left" | "center" | "right", runtimeCount?: number) {
