@@ -170,12 +170,26 @@ function insertStampInRow(element: LoyaltyCardStampGridElement, row: number, col
   return withStampSlots(element, [...shifted, { id: `slot-${Date.now()}-${row}-${nextColumn}`, row, column: nextColumn }], Math.min(layout.columns, 12));
 }
 
-function insertStampRow(element: LoyaltyCardStampGridElement, row: number, column = 0, runtimeCount?: number) {
+function stampRowAlignFromColumn(column: number, columns: number): "left" | "center" | "right" {
+  if (column <= 0) return "left";
+  if (column >= columns - 1) return "right";
+  return "center";
+}
+
+function insertStampRow(element: LoyaltyCardStampGridElement, row: number, column = 0, runtimeCount?: number, align?: "left" | "center" | "right") {
   const layout = resolveFittedStampGridLayout(element, runtimeCount);
   if (layout.rows >= 20) return element;
   const slots = stampSlotsFromElement(element, runtimeCount).map((slot) => slot.row >= row ? { ...slot, row: slot.row + 1 } : slot);
-  const nextColumn = clamp(Math.floor(column), 0, 11);
-  return withStampSlots(element, [...slots, { id: `slot-${Date.now()}-${row}-${nextColumn}`, row, column: nextColumn }], Math.min(layout.columns, 12));
+  const nextAlign = align || stampRowAlignFromColumn(column, layout.columns);
+  const nextElement = withStampSlots(element, [...slots, { id: `slot-${Date.now()}-${row}-0`, row, column: 0 }], Math.min(layout.columns, 12));
+  return {
+    ...nextElement,
+    stampRows: nextElement.stampRows?.map((nextRow, index) => {
+      if (index === row) return { ...nextRow, align: nextAlign };
+      const oldIndex = index > row ? index - 1 : index;
+      return { ...nextRow, align: element.stampRows?.[oldIndex]?.align || nextRow.align || "center" };
+    }),
+  };
 }
 
 function removeStampSlot(element: LoyaltyCardStampGridElement, row: number, column: number, runtimeCount?: number) {
@@ -192,11 +206,12 @@ function alignStampRow(element: LoyaltyCardStampGridElement, row: number, align:
   const slots = stampSlotsFromElement(element, runtimeCount);
   const rowSlots = slots.filter((slot) => slot.row === row);
   if (!rowSlots.length) return element;
-  const minColumn = Math.min(...rowSlots.map((slot) => slot.column));
-  const maxColumn = Math.max(...rowSlots.map((slot) => slot.column));
-  const span = maxColumn - minColumn + 1;
-  const targetStart = align === "right" ? layout.columns - span : align === "left" ? 0 : Math.floor((layout.columns - span) / 2);
-  const shiftedSlots = slots.map((slot) => slot.row === row ? { ...slot, column: Math.max(0, targetStart) + slot.column - minColumn } : slot);
+  const sortedRowSlots = rowSlots.sort((a, b) => a.column - b.column);
+  const shiftedSlots = slots.map((slot) => {
+    if (slot.row !== row) return slot;
+    const column = Math.max(0, sortedRowSlots.findIndex((candidate) => candidate.id === slot.id));
+    return { ...slot, column };
+  });
   const nextElement = withStampSlots(element, shiftedSlots, layout.columns);
   const rows = stampRowsFromSlots(nextElement.stampSlots || [], nextElement.stampRows);
   return { ...nextElement, stampRows: rows.map((item, index) => index === row ? { ...item, align } : item) };
@@ -720,9 +735,17 @@ export function LoyaltyCardDesignCanvas({
     const layout = resolveFittedStampGridLayout(element, runtimeCount);
     const offset = stampGridContentOffset(element, layout.contentWidth, layout.contentHeight);
     const rowSlots = Array.from({ length: layout.rows }).map((_, row) => layout.slots.filter((slot) => slot.row === row).sort((a, b) => a.column - b.column));
+    const rowStartX = (row: number) => {
+      const slots = rowSlots[row] || [];
+      const rowWidth = slots.length * layout.cellSize + Math.max(0, slots.length - 1) * layout.gap;
+      const align = layout.rowAlignments[row] || element.horizontalAlign || "center";
+      if (align === "left") return offset.x;
+      if (align === "right") return offset.x + layout.contentWidth - rowWidth;
+      return offset.x + (layout.contentWidth - rowWidth) / 2;
+    };
     const columnX = (column: number) => offset.x + column * (layout.cellSize + layout.gap);
-    const slotPosition = (row: number, column: number) => ({
-      x: columnX(column),
+    const slotPosition = (row: number, position: number) => ({
+      x: rowStartX(row) + position * (layout.cellSize + layout.gap),
       y: offset.y + row * (layout.cellSize + layout.gap),
     });
     const handlePointer = (event: ReactPointerEvent) => {
@@ -737,7 +760,7 @@ export function LoyaltyCardDesignCanvas({
             <div key={`row-${row}`}>
               {Array.from({ length: slots.length + 1 }).map((_, position) => {
                 const column = position >= slots.length ? Math.min(11, (slots[slots.length - 1]?.column ?? -1) + 1) : slots[position].column;
-                const x = columnX(column) - (position === 0 ? 14 : layout.gap / 2 + 7);
+                const x = rowStartX(row) + position * (layout.cellSize + layout.gap) - (position === 0 ? 14 : layout.gap / 2 + 7);
                 if (slots.length >= 12) return null;
                 return <button key={`insert-${row}-${position}`} type="button" className="loyalty-stamp-inline-editor__insert" style={{ left: x * scale, top: (y - 11) * scale, ...stampControlRevealStyle(element, x + 11, y) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampInRow(element, row, column, runtimeCount))} aria-label={`Insert stamp in row ${row + 1}`} />;
               })}
@@ -749,15 +772,18 @@ export function LoyaltyCardDesignCanvas({
         })}
         {layout.slots.map((slot) => {
           const row = slot.row;
-          const point = slotPosition(row, slot.column);
+          const slots = rowSlots[row] || [];
+          const position = Math.max(0, slots.findIndex((candidate) => candidate.id === slot.id));
+          const point = slotPosition(row, position);
           return <button key={slot.id} type="button" className="loyalty-stamp-inline-editor__remove" style={{ left: (point.x + layout.cellSize - 9) * scale, top: (point.y - 9) * scale, ...stampControlRevealStyle(element, point.x + layout.cellSize + 2, point.y + 2) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, removeStampSlot(element, slot.row, slot.column, runtimeCount))} aria-label={`Remove stamp ${slot.stampIndex + 1}`} />;
         })}
         {Array.from({ length: layout.columns }).map((_, column) => {
           const x = offset.x + column * (layout.cellSize + layout.gap) + layout.cellSize / 2;
+          const align = stampRowAlignFromColumn(column, layout.columns);
           return (
             <div key={`column-${column}`}>
-              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y - 24) * scale, ...stampControlRevealStyle(element, x, offset.y - 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, 0, column, runtimeCount))} aria-label={`Insert stamp above column ${column + 1}`} />
-              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y + layout.contentHeight + 2) * scale, ...stampControlRevealStyle(element, x, offset.y + layout.contentHeight + 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, layout.rows, column, runtimeCount))} aria-label={`Insert stamp below column ${column + 1}`} />
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y - 24) * scale, ...stampControlRevealStyle(element, x, offset.y - 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, 0, column, runtimeCount, align))} aria-label={`Insert ${align} aligned stamp row above`} />
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y + layout.contentHeight + 2) * scale, ...stampControlRevealStyle(element, x, offset.y + layout.contentHeight + 13) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, layout.rows, column, runtimeCount, align))} aria-label={`Insert ${align} aligned stamp row below`} />
             </div>
           );
         })}

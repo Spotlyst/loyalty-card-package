@@ -238,7 +238,6 @@ function buildStampGridRenderItems(element: LoyaltyCardStampGridElement, stampLa
   const slotsByRow = Array.from({ length: stampLayout.rows }).map((_, row) => stampLayout.slots.filter((slot) => slot.row === row).sort((a, b) => a.column - b.column));
   const rowStartX = (row: number) => {
     const slots = slotsByRow[row] || [];
-    if (stampLayout.usesExplicitSlots) return 0;
     const rowWidth = slots.length * stampLayout.cellSize + Math.max(0, slots.length - 1) * stampLayout.gap;
     const align = stampLayout.rowAlignments[row] || element.horizontalAlign || "center";
     if (align === "left") return 0;
@@ -249,7 +248,7 @@ function buildStampGridRenderItems(element: LoyaltyCardStampGridElement, stampLa
   return stampLayout.slots.map((slot): StampGridRenderItem => {
     const rowSlots = slotsByRow[slot.row] || [];
     const position = Math.max(0, rowSlots.findIndex((candidate) => candidate.id === slot.id));
-    const x = stampLayout.usesExplicitSlots ? slot.column * (stampLayout.cellSize + stampLayout.gap) : rowStartX(slot.row) + position * (stampLayout.cellSize + stampLayout.gap);
+    const x = rowStartX(slot.row) + position * (stampLayout.cellSize + stampLayout.gap);
     const y = slot.row * (stampLayout.cellSize + stampLayout.gap);
     return {
       key: stampLayout.usesExplicitSlots ? slot.id : String(slot.stampIndex),
@@ -331,23 +330,23 @@ function LoyaltyCardStampGridElementView({ element, schema, scale, tokens, anima
         style={{
           width: stampLayout.contentWidth * scale,
           height: stampLayout.contentHeight * scale,
-          ...(animateLayout ? { position: "relative" as const } : slotStyle),
+          ...(animateLayout || stampLayout.usesExplicitSlots ? { position: "relative" as const } : slotStyle),
         }}
       >
-        {animateLayout ? (
+        {animateLayout || stampLayout.usesExplicitSlots ? (
           <>
             {currentItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
               position: "absolute",
               left: item.x * scale,
               top: item.y * scale,
-            }, item.key, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--enter"))}
-            {leavingItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
+            }, item.key, animateLayout ? "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--enter" : undefined))}
+            {animateLayout ? leavingItems.map((item) => renderStampSlot(element, item.stampIndex, item.filled, item.stamp, scale, item.stampSize, item.cellSize, {
               position: "absolute",
               left: item.x * scale,
               top: item.y * scale,
-            }, `leaving-${item.key}`, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--exit"))}
+            }, `leaving-${item.key}`, "spotlyst-stamp-grid-slot--motion spotlyst-stamp-grid-slot--exit")) : null}
           </>
-        ) : stampLayout.usesExplicitSlots ? stampLayout.slots.map((slot) => renderStampSlot(element, slot.stampIndex, slot.stampIndex < filled, stamps[slot.stampIndex], scale, stampLayout.stampSize, stampLayout.cellSize, { gridColumn: slot.column + 1, gridRow: slot.row + 1 }, slot.id)) : rows.map((row, rowIndex) => (
+        ) : rows.map((row, rowIndex) => (
           <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
             {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
           </div>

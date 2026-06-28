@@ -117,12 +117,12 @@ export function resolveFittedStampGridLayout(element: LoyaltyCardStampGridElemen
     ? slotLayout
     : stampRows.flatMap((row, rowIndex) => Array.from({ length: row.count }).map((_, columnIndex) => ({ id: `slot-${rowIndex}-${columnIndex}`, row: rowIndex, column: columnIndex, stampIndex: 0 }))).map((slot, stampIndex) => ({ ...slot, stampIndex }));
   const slotRows = Math.max(1, ...slots.map((slot) => slot.row + 1));
-  const slotColumns = Math.max(1, ...slots.map((slot) => slot.column + 1));
+  const slotRowCounts = Array.from({ length: slotRows }).map((_, rowIndex) => slots.filter((slot) => slot.row === rowIndex).length);
   const rowCounts = stampRows.map((row) => row.count);
   const count = slots.length || rowCounts.reduce((sum, rowCount) => sum + rowCount, 0) || 1;
-  const columns = slotLayout.length > 0 && !hasRuntimeSlotOverride ? slotColumns : Math.max(1, ...rowCounts);
+  const columns = slotLayout.length > 0 && !hasRuntimeSlotOverride ? Math.max(1, ...slotRowCounts) : Math.max(1, ...rowCounts);
   const rows = slotLayout.length > 0 && !hasRuntimeSlotOverride ? slotRows : Math.max(1, rowCounts.length);
-  const effectiveRowCounts = Array.from({ length: rows }).map((_, rowIndex) => slots.filter((slot) => slot.row === rowIndex).length || rowCounts[rowIndex] || 0);
+  const effectiveRowCounts = Array.from({ length: rows }).map((_, rowIndex) => slotRowCounts[rowIndex] || rowCounts[rowIndex] || 0);
   const rowAlignments = Array.from({ length: rows }).map((_, rowIndex) => stampRows[rowIndex]?.align || element.stampRows?.[rowIndex]?.align || element.horizontalAlign || "center");
   const columnAlignments = resolveStampGridColumnAlignments(element, columns);
   const stampScale = resolveStampGridScale(element);
