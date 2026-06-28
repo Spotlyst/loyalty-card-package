@@ -135,7 +135,7 @@ function withStampSlots(element: LoyaltyCardStampGridElement, slots: LoyaltyCard
     stampRows: rows,
     count,
     columns: Math.max(1, minColumns, ...nextSlots.map((slot) => slot.column + 1), ...rows.map((row) => row.count)),
-    previewFilledCount: Math.min(element.previewFilledCount || 0, count),
+    previewFilledCount: element.previewFilledMode === "manual" ? Math.min(element.previewFilledCount || 0, count) : undefined,
     countToken: "",
     filledToken: "",
   };

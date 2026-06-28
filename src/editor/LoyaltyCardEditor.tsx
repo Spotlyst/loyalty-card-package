@@ -153,6 +153,7 @@ function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
 function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGridElement; onChange: (next: Partial<LoyaltyCardStampGridElement>) => void }) {
   const count = resolveStampCount(element);
   const previewFilledCount = resolvePreviewFilledCount(element);
+  const previewFilledMode = element.previewFilledMode === "manual" ? "manual" : "auto";
   const stampScale = Math.round(resolveStampScale(element));
   const gap = Math.round(element.gap || 0);
   const stampRows = resolveStampGridRows(element);
@@ -168,7 +169,7 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
       stampRows: sanitizedRows,
       count: nextCount,
       columns: Math.max(1, ...sanitizedRows.map((row) => row.count)),
-      previewFilledCount: clampNumber(previewFilledCount, 0, nextCount),
+      previewFilledCount: previewFilledMode === "manual" ? clampNumber(previewFilledCount, 0, nextCount) : undefined,
       countToken: "",
       filledToken: "",
     });
@@ -181,7 +182,8 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
   };
   const removeStampFromRow = (rowIndex: number) => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, count: row.count - 1 } : row));
   const alignRow = (rowIndex: number, align: "left" | "center" | "right") => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, align } : row));
-  const stepFilled = (delta: number) => applyChanges({ previewFilledCount: clampNumber(previewFilledCount + delta, 0, count) });
+  const stepFilled = (delta: number) => applyChanges({ previewFilledMode: "manual", previewFilledCount: clampNumber(previewFilledCount + delta, 0, count) });
+  const useAutoFilled = () => applyChanges({ previewFilledMode: "auto", previewFilledCount: undefined });
   const stepSize = (delta: number) => applyChanges({ stampSize: clampNumber(stampScale + delta, 16, 220) });
   const stepGap = (delta: number) => applyChanges({ gap: clampNumber(gap + delta, 0, 80) });
 
@@ -214,8 +216,8 @@ function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGr
           <div><button type="button" disabled>-</button><strong>{count}</strong><button type="button" disabled>+</button></div>
         </div>
         <div className="loyalty-stamp-stepper">
-          <span>Filled preview</span>
-          <div><button type="button" onClick={() => stepFilled(-1)}>-</button><strong>{previewFilledCount}</strong><button type="button" onClick={() => stepFilled(1)}>+</button></div>
+          <span>{previewFilledMode === "auto" ? "Filled preview auto" : "Filled preview"}</span>
+          <div><button type="button" onClick={() => stepFilled(-1)}>-</button><strong>{previewFilledCount}</strong><button type="button" onClick={() => stepFilled(1)}>+</button><button type="button" onClick={useAutoFilled} disabled={previewFilledMode === "auto"}>Auto</button></div>
         </div>
         <div className="loyalty-stamp-stepper">
           <span>Stamp scale</span>
@@ -671,7 +673,7 @@ function createElement(type: LoyaltyCardElement["type"], zIndex: number, options
     return { ...base, type, color: "#111827", strokeWidth: 4 };
   }
 
-  return { ...base, type, width: 344, height: 128, columns: 4, count: 8, stampRows: [{ count: 4, align: "center" }, { count: 4, align: "center" }], countToken: "", filledToken: "", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, previewFilledCount: 0, autoFitContainer: false, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
+  return { ...base, type, width: 344, height: 128, columns: 4, count: 8, stampRows: [{ count: 4, align: "center" }, { count: 4, align: "center" }], countToken: "", filledToken: "", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, previewFilledMode: "auto", autoFitContainer: false, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -681,7 +683,12 @@ function clampNumber(value: number, min: number, max: number) {
 
 function resolvePreviewFilledCount(element: LoyaltyCardStampGridElement) {
   const count = resolveStampCount(element);
-  return clampNumber(Math.floor(Number(element.previewFilledCount) || 0), 0, count);
+  if (element.previewFilledMode === "manual") return clampNumber(Math.floor(Number(element.previewFilledCount) || 0), 0, count);
+  return Math.min(Math.max(0, count - 1), Math.max(0, Math.floor(count * 0.75)));
+}
+
+function previewTokenKey(value: string | undefined) {
+  return String(value || "").trim().match(/^{{\s*([a-zA-Z0-9_]+)\s*}}$/)?.[1] || "";
 }
 
 function clampColorAlpha(value: number) {
@@ -950,11 +957,20 @@ export function LoyaltyCardEditor({
   const selectedEditableElements = selectedElements.filter((element) => !element.locked && !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeElements.find((element) => element.id === selectedElementIds[0]) || null : null;
   const editorPreviewTokens = useMemo(() => {
-    if (selectedElement?.type !== "stampGrid") return tokens;
-    const previewFilledCount = resolvePreviewFilledCount(selectedElement);
+    const previewStampGrid = selectedElement?.type === "stampGrid" ? selectedElement : activeElements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid");
+    if (!previewStampGrid) return tokens;
+    const previewFilledCount = resolvePreviewFilledCount(previewStampGrid);
     const previewStamps = Array.from({ length: previewFilledCount }).map((_, index) => ({ awardedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString() }));
-    return { ...tokens, stamps: previewStamps, stampsCollected: previewFilledCount };
-  }, [selectedElement, tokens]);
+    const stampDataKey = previewTokenKey(previewStampGrid.stampDataToken || "{{stamps}}");
+    const filledKey = previewTokenKey(previewStampGrid.filledToken);
+    return {
+      ...tokens,
+      stamps: previewStamps,
+      stampsCollected: previewFilledCount,
+      ...(stampDataKey ? { [stampDataKey]: previewStamps } : {}),
+      ...(filledKey ? { [filledKey]: previewFilledCount } : {}),
+    };
+  }, [activeElements, selectedElement, tokens]);
   const selectedGroupIds = activeGroups.filter((group) => group.elementIds.some((id) => selectedElementIds.includes(id))).map((group) => group.id);
   const emptyStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_empty" && asset.status !== "archived");
   const filledStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_filled" && asset.status !== "archived");
