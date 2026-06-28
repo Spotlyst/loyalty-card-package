@@ -318,6 +318,16 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
       align: stampLayout.rowAlignments[rowIndex] || "center",
       indexes: Array.from({ length: Math.max(0, rowCount) }).map(() => stampIndex++),
     }));
+    const slotStyle = stampLayout.usesExplicitSlots ? {
+      display: "grid",
+      gridTemplateColumns: `repeat(${stampLayout.columns}, ${stampLayout.cellSize * scale}px)`,
+      gridTemplateRows: `repeat(${stampLayout.rows}, ${stampLayout.cellSize * scale}px)`,
+      gap: stampLayout.gap * scale,
+    } : {
+      display: "flex",
+      flexDirection: "column" as const,
+      gap: stampLayout.gap * scale,
+    };
     return (
       <div
         key={element.id}
@@ -335,16 +345,14 @@ function renderElement(element: LoyaltyCardElement, schema: LoyaltyCardDesignSch
           style={{
             width: stampLayout.contentWidth * scale,
             height: stampLayout.contentHeight * scale,
-            display: "flex",
-            flexDirection: "column",
-            gap: stampLayout.gap * scale,
+            ...slotStyle,
           }}
         >
-          {rows.map((row, rowIndex) => (
-            <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
-              {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
-            </div>
-          ))}
+          {stampLayout.usesExplicitSlots ? stampLayout.slots.map((slot) => renderStampSlot(element, slot.stampIndex, slot.stampIndex < filled, stamps[slot.stampIndex], scale, stampLayout.stampSize, stampLayout.cellSize, { gridColumn: slot.column + 1, gridRow: slot.row + 1 })) : rows.map((row, rowIndex) => (
+              <div key={`${element.id}-row-${rowIndex}`} style={{ display: "flex", justifyContent: stampRowJustifyContent(row.align), gap: stampLayout.gap * scale, height: stampLayout.cellSize * scale }}>
+                {row.indexes.map((index) => renderStampSlot(element, index, index < filled, stamps[index], scale, stampLayout.stampSize, stampLayout.cellSize))}
+              </div>
+            ))}
         </div>
       </div>
     );
@@ -417,7 +425,7 @@ function filledStampRotation(element: LoyaltyCardStampGridElement, index: number
   return (stableStampUnit(element.id, index, 211) * 2 - 1) * maxRotation;
 }
 
-function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number) {
+function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, filled: boolean, stamp: unknown, scale: number, stampSize: number, cellSize: number, position?: CSSProperties) {
   return (
     <span
       key={`${element.id}-${index}`}
@@ -430,6 +438,7 @@ function renderStampSlot(element: LoyaltyCardStampGridElement, index: number, fi
         minWidth: 0,
         minHeight: 0,
         overflow: "visible",
+        ...position,
       }}
     >
       {renderStampCell(element, index, filled, stamp, scale, stampSize)}

@@ -1,7 +1,8 @@
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import type { LoyaltyCardDesignSchema, LoyaltyCardElement, LoyaltyCardFaceKey, LoyaltyCardTokens } from "../schema.js";
+import { resolveLoyaltyCardToken, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardStampSlot, type LoyaltyCardTokens } from "../schema.js";
+import { resolveFittedStampGridLayout } from "../stampGridLayout.js";
 
 type LoyaltyCardDesignCanvasProps = {
   schema: LoyaltyCardDesignSchema;
@@ -72,6 +73,112 @@ function overlayElementStyle(element: LoyaltyCardElement, scale: number): CSSPro
     transform: elementTransform(element.x, element.y, element.rotation, scale),
     zIndex: element.zIndex,
   };
+}
+
+function stampGridContentOffset(element: LoyaltyCardStampGridElement, width: number, height: number) {
+  const x = element.horizontalAlign === "left" ? 0 : element.horizontalAlign === "right" ? element.width - width : (element.width - width) / 2;
+  const y = element.verticalAlign === "center" ? (element.height - height) / 2 : element.verticalAlign === "bottom" ? element.height - height : 0;
+  return { x: Math.max(0, x), y: Math.max(0, y) };
+}
+
+function compactStampSlots(slots: LoyaltyCardStampSlot[]) {
+  const used = new Set<string>();
+  const boundedSlots = slots.flatMap((slot) => {
+    const row = clamp(Math.floor(Number(slot.row) || 0), 0, 19);
+    const column = clamp(Math.floor(Number(slot.column) || 0), 0, 11);
+    const key = `${row}:${column}`;
+    if (used.has(key)) return [];
+    used.add(key);
+    return [{ ...slot, row, column }];
+  });
+  const rows = Array.from(new Set(boundedSlots.map((slot) => slot.row))).sort((a, b) => a - b);
+  const rowIndexByOldRow = new Map(rows.map((row, index) => [row, index]));
+  return boundedSlots
+    .map((slot) => ({ ...slot, row: rowIndexByOldRow.get(slot.row) ?? slot.row }))
+    .sort((a, b) => a.row - b.row || a.column - b.column)
+    .map((slot, index) => ({ ...slot, id: slot.id || `slot-${index}` }));
+}
+
+function stampGridRuntimeCount(element: LoyaltyCardStampGridElement, tokens?: LoyaltyCardTokens) {
+  return Math.max(1, Math.min(100, Number(resolveLoyaltyCardToken(element.countToken, tokens || {})) || element.count || 10));
+}
+
+function stampSlotsFromElement(element: LoyaltyCardStampGridElement, runtimeCount?: number) {
+  const layout = resolveFittedStampGridLayout(element, runtimeCount);
+  return layout.slots.map((slot) => {
+    if (layout.usesExplicitSlots) return { id: slot.id, row: slot.row, column: slot.column };
+    const rowCount = layout.rowCounts[slot.row] || 0;
+    const align = layout.rowAlignments[slot.row] || "center";
+    const shift = align === "right" ? layout.columns - rowCount : align === "left" ? 0 : Math.floor((layout.columns - rowCount) / 2);
+    return { id: slot.id, row: slot.row, column: slot.column + Math.max(0, shift) };
+  });
+}
+
+function stampRowsFromSlots(slots: LoyaltyCardStampSlot[], previousRows: LoyaltyCardStampGridElement["stampRows"]) {
+  const rows = Array.from(new Set(slots.map((slot) => slot.row))).sort((a, b) => a - b);
+  return rows.map((row) => ({
+    count: slots.filter((slot) => slot.row === row).length,
+    align: previousRows?.[row]?.align || "center",
+  }));
+}
+
+function withStampSlots(element: LoyaltyCardStampGridElement, slots: LoyaltyCardStampSlot[], minColumns = 0): LoyaltyCardStampGridElement {
+  const nextSlots = compactStampSlots(slots).slice(0, 100);
+  const rows = stampRowsFromSlots(nextSlots, element.stampRows);
+  const count = Math.max(1, nextSlots.length);
+  return {
+    ...element,
+    stampSlots: nextSlots,
+    stampRows: rows,
+    count,
+    columns: Math.max(1, minColumns, ...nextSlots.map((slot) => slot.column + 1), ...rows.map((row) => row.count)),
+    previewFilledCount: Math.min(element.previewFilledCount || 0, count),
+    countToken: "",
+    filledToken: "",
+  };
+}
+
+function insertStampInRow(element: LoyaltyCardStampGridElement, row: number, column: number, runtimeCount?: number) {
+  const layout = resolveFittedStampGridLayout(element, runtimeCount);
+  const slots = stampSlotsFromElement(element, runtimeCount);
+  const rowSlots = slots.filter((slot) => slot.row === row);
+  if (rowSlots.length >= 12) return element;
+  const nextColumn = clamp(Math.floor(column), 0, 11);
+  const shifted = slots.map((slot) => slot.row === row && slot.column >= nextColumn && slot.column < 11 ? { ...slot, column: slot.column + 1 } : slot);
+  return withStampSlots(element, [...shifted, { id: `slot-${Date.now()}-${row}-${nextColumn}`, row, column: nextColumn }], Math.min(layout.columns, 12));
+}
+
+function insertStampRow(element: LoyaltyCardStampGridElement, row: number, column = 0, runtimeCount?: number) {
+  const layout = resolveFittedStampGridLayout(element, runtimeCount);
+  if (layout.rows >= 20) return element;
+  const slots = stampSlotsFromElement(element, runtimeCount).map((slot) => slot.row >= row ? { ...slot, row: slot.row + 1 } : slot);
+  const nextColumn = clamp(Math.floor(column), 0, 11);
+  return withStampSlots(element, [...slots, { id: `slot-${Date.now()}-${row}-${nextColumn}`, row, column: nextColumn }], Math.min(layout.columns, 12));
+}
+
+function removeStampSlot(element: LoyaltyCardStampGridElement, row: number, column: number, runtimeCount?: number) {
+  const layout = resolveFittedStampGridLayout(element, runtimeCount);
+  const slots = stampSlotsFromElement(element, runtimeCount);
+  if (slots.length <= 1) return element;
+  const remaining = slots
+    .filter((slot) => !(slot.row === row && slot.column === column))
+    .map((slot) => slot.row === row && slot.column > column ? { ...slot, column: slot.column - 1 } : slot);
+  return withStampSlots(element, remaining, layout.columns);
+}
+
+function alignStampRow(element: LoyaltyCardStampGridElement, row: number, align: "left" | "center" | "right", runtimeCount?: number) {
+  const layout = resolveFittedStampGridLayout(element, runtimeCount);
+  const slots = stampSlotsFromElement(element, runtimeCount);
+  const rowSlots = slots.filter((slot) => slot.row === row);
+  if (!rowSlots.length) return element;
+  const minColumn = Math.min(...rowSlots.map((slot) => slot.column));
+  const maxColumn = Math.max(...rowSlots.map((slot) => slot.column));
+  const span = maxColumn - minColumn + 1;
+  const targetStart = align === "right" ? layout.columns - span : align === "left" ? 0 : Math.floor((layout.columns - span) / 2);
+  const shiftedSlots = slots.map((slot) => slot.row === row ? { ...slot, column: Math.max(0, targetStart) + slot.column - minColumn } : slot);
+  const nextElement = withStampSlots(element, shiftedSlots, layout.columns);
+  const rows = stampRowsFromSlots(nextElement.stampSlots || [], nextElement.stampRows);
+  return { ...nextElement, stampRows: rows.map((item, index) => index === row ? { ...item, align } : item) };
 }
 
 function getGroupElementIds(schema: LoyaltyCardDesignSchema, face: LoyaltyCardFaceKey, elementId: string) {
@@ -541,6 +648,62 @@ export function LoyaltyCardDesignCanvas({
     );
   };
 
+  const updateStampGrid = (element: LoyaltyCardStampGridElement, nextElement: LoyaltyCardStampGridElement) => {
+    onBeginInteraction?.();
+    onChangeElement(element.id, nextElement as LoyaltyCardElement);
+  };
+
+  const renderStampGridInlineEditor = (element: LoyaltyCardElement) => {
+    if (element.type !== "stampGrid" || element.id !== selectedElement?.id || element.locked) return null;
+    const runtimeCount = stampGridRuntimeCount(element, tokens);
+    const layout = resolveFittedStampGridLayout(element, runtimeCount);
+    const offset = stampGridContentOffset(element, layout.contentWidth, layout.contentHeight);
+    const rowSlots = Array.from({ length: layout.rows }).map((_, row) => layout.slots.filter((slot) => slot.row === row).sort((a, b) => a.column - b.column));
+    const columnX = (column: number) => offset.x + column * (layout.cellSize + layout.gap);
+    const slotPosition = (row: number, column: number) => ({
+      x: columnX(column),
+      y: offset.y + row * (layout.cellSize + layout.gap),
+    });
+    const handlePointer = (event: ReactPointerEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    return (
+      <div className="loyalty-stamp-inline-editor" style={{ inset: 0 }} onPointerDown={(event) => event.stopPropagation()}>
+        {rowSlots.map((slots, row) => {
+          const y = offset.y + row * (layout.cellSize + layout.gap) + layout.cellSize / 2;
+          return (
+            <div key={`row-${row}`}>
+              {Array.from({ length: slots.length + 1 }).map((_, position) => {
+                const column = position >= slots.length ? Math.min(11, (slots[slots.length - 1]?.column ?? -1) + 1) : slots[position].column;
+                const x = columnX(column) - (position === 0 ? 14 : layout.gap / 2 + 7);
+                if (slots.length >= 12) return null;
+                return <button key={`insert-${row}-${position}`} type="button" className="loyalty-stamp-inline-editor__insert" style={{ left: x * scale, top: (y - 11) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampInRow(element, row, column, runtimeCount))} aria-label={`Insert stamp in row ${row + 1}`} />;
+              })}
+              <div className="loyalty-stamp-inline-editor__row-toolbar" style={{ left: (offset.x + layout.contentWidth + 8) * scale, top: (y - 12) * scale }} onPointerDown={handlePointer}>
+                {(["left", "center", "right"] as const).map((align) => <button key={align} type="button" className={layout.rowAlignments[row] === align ? "loyalty-stamp-inline-editor__align loyalty-stamp-inline-editor__align--active" : "loyalty-stamp-inline-editor__align"} onClick={() => updateStampGrid(element, alignStampRow(element, row, align, runtimeCount))} aria-label={`Align row ${align}`}>{align === "left" ? "←" : align === "right" ? "→" : "•"}</button>)}
+              </div>
+            </div>
+          );
+        })}
+        {layout.slots.map((slot) => {
+          const row = slot.row;
+          const point = slotPosition(row, slot.column);
+          return <button key={slot.id} type="button" className="loyalty-stamp-inline-editor__remove" style={{ left: (point.x + layout.cellSize - 9) * scale, top: (point.y - 9) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, removeStampSlot(element, slot.row, slot.column, runtimeCount))} aria-label={`Remove stamp ${slot.stampIndex + 1}`} />;
+        })}
+        {Array.from({ length: layout.columns }).map((_, column) => {
+          const x = offset.x + column * (layout.cellSize + layout.gap) + layout.cellSize / 2;
+          return (
+            <div key={`column-${column}`}>
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y - 24) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, 0, column, runtimeCount))} aria-label={`Insert stamp above column ${column + 1}`} />
+              <button type="button" className="loyalty-stamp-inline-editor__insert loyalty-stamp-inline-editor__insert--column" style={{ left: (x - 11) * scale, top: (offset.y + layout.contentHeight + 2) * scale }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, insertStampRow(element, layout.rows, column, runtimeCount))} aria-label={`Insert stamp below column ${column + 1}`} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const startGroupRotate = (event: ReactPointerEvent, elementIds: string[]) => {
     event.preventDefault();
     event.stopPropagation();
@@ -617,6 +780,7 @@ export function LoyaltyCardDesignCanvas({
               onPointerDown={(event) => element.locked ? event.stopPropagation() : startDrag(event, element)}
             >
               {element.locked ? null : renderHandles(element)}
+              {renderStampGridInlineEditor(element)}
             </div>
           ))}
           {selectedGroups.map(renderGroupOverlay)}

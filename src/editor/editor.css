@@ -1042,6 +1042,105 @@
   aspect-ratio: 1 / 1;
 }
 
+.loyalty-stamp-inline-editor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.loyalty-design-canvas__element--selected .loyalty-stamp-inline-editor,
+.loyalty-design-canvas__element--selected:hover .loyalty-stamp-inline-editor,
+.loyalty-stamp-inline-editor:focus-within {
+  opacity: 1;
+}
+
+.loyalty-stamp-inline-editor__insert,
+.loyalty-stamp-inline-editor__remove,
+.loyalty-stamp-inline-editor__align {
+  position: absolute;
+  pointer-events: auto;
+  border: 1px solid rgb(255 255 255 / 0.82);
+  background: rgb(15 23 42 / 0.88);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.28);
+}
+
+.loyalty-stamp-inline-editor__insert,
+.loyalty-stamp-inline-editor__remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+}
+
+.loyalty-stamp-inline-editor__insert::before,
+.loyalty-stamp-inline-editor__insert::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.loyalty-stamp-inline-editor__insert::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.loyalty-stamp-inline-editor__insert--column {
+  background: rgb(37 99 235 / 0.9);
+}
+
+.loyalty-stamp-inline-editor__remove {
+  border-color: rgb(254 226 226 / 0.9);
+  background: rgb(220 38 38 / 0.9);
+}
+
+.loyalty-stamp-inline-editor__remove::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.loyalty-stamp-inline-editor__row-toolbar {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgb(148 163 184 / 0.34);
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.86);
+  box-shadow: 0 10px 22px rgb(0 0 0 / 0.26);
+}
+
+.loyalty-stamp-inline-editor__align {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.loyalty-stamp-inline-editor__align--active {
+  border-color: rgb(147 197 253 / 0.7);
+  background: rgb(59 130 246 / 0.95);
+}
+
 .loyalty-stamp-layout-control {
   display: grid;
   gap: 12px;

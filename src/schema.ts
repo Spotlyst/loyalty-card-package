@@ -141,11 +141,23 @@ export type LoyaltyCardStampRow = {
   align?: LoyaltyCardStampHorizontalAlign;
 };
 
+export type LoyaltyCardStampSlot = {
+  id: string;
+  row: number;
+  column: number;
+};
+
+export type LoyaltyCardStampColumn = {
+  align?: LoyaltyCardStampVerticalAlign;
+};
+
 export type LoyaltyCardStampGridElement = LoyaltyCardElementBase & {
   type: "stampGrid";
   columns: number;
   count: number;
   stampRows?: LoyaltyCardStampRow[];
+  stampSlots?: LoyaltyCardStampSlot[];
+  stampColumns?: LoyaltyCardStampColumn[];
   countToken: string;
   filledToken?: string;
   stampDataToken?: string;
