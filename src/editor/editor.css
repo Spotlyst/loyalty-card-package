@@ -1653,7 +1653,7 @@
 .loyalty-library-upload-trigger,
 .loyalty-file-picker-button,
 .loyalty-stamp-preset-strip > button,
-.loyalty-font-browser-item--with-action > button:last-child {
+.loyalty-font-browser-item__actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2095,14 +2095,41 @@
 
 .loyalty-font-browser-item--with-action {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
 }
 
 .loyalty-font-browser-item--with-action > button:first-child {
   border: 0;
   background: transparent;
   text-align: left;
+}
+
+.loyalty-font-browser-item__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.loyalty-font-browser-item__actions button {
+  min-height: 30px;
+  width: 100%;
+  border-radius: 999px;
+}
+
+.loyalty-font-browser-item__delete {
+  border-color: rgb(239 68 68 / 0.32) !important;
+  color: var(--danger) !important;
+}
+
+.loyalty-font-browser-item__delete:hover:not(:disabled) {
+  background: var(--danger-soft) !important;
+}
+
+.loyalty-font-browser-item__error {
+  color: var(--danger);
+  font-size: 0.68rem;
+  font-weight: 600;
 }
 
 .loyalty-studio-inspector .field {

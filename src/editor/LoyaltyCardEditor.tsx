@@ -139,6 +139,7 @@ export type LoyaltyCardEditorProps = {
   onDeleteLibraryAsset?: (assetId: string) => Promise<void>;
   onUploadFont?: (file: File, meta: { name: string; fontFamily: string; fontWeight: number; fontStyle: "normal" | "italic" }) => Promise<LoyaltyCardEditorUploadedFont>;
   onArchiveFont?: (fontId: string) => Promise<void>;
+  onDeleteFont?: (fontId: string) => Promise<void>;
 };
 
 function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
@@ -422,24 +423,73 @@ function loadUploadedFontPreview(font: LoyaltyCardEditorUploadedFont) {
   loadedPreviewFontKeys.add(key);
   const style = document.createElement("style");
   style.setAttribute("data-spotlyst-uploaded-font", font.id);
-  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-display:swap;}`;
+  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-style:${font.fontStyle || "normal"};font-weight:${font.fontWeight || 400};font-display:swap;}`;
   document.head.appendChild(style);
 }
 
-function UploadedFontBrowserItem({ font, isActive, onSelect, onArchive }: { font: LoyaltyCardEditorUploadedFont; isActive: boolean; onSelect: (fontId: string) => void; onArchive?: (fontId: string) => Promise<void> }) {
+function sortUploadedFontVariants(fonts: LoyaltyCardEditorUploadedFont[]) {
+  return [...fonts].sort((a, b) => (a.fontStyle || "normal").localeCompare(b.fontStyle || "normal") || (a.fontWeight || 400) - (b.fontWeight || 400) || a.fontFamily.localeCompare(b.fontFamily));
+}
+
+function uploadedFontVariantLabel(font: LoyaltyCardEditorUploadedFont) {
+  const weight = font.fontWeight || 400;
+  return `${weight}${font.fontStyle === "italic" ? " italic" : ""}`;
+}
+
+function uploadedFontGroupSummary(fonts: LoyaltyCardEditorUploadedFont[]) {
+  const variants = sortUploadedFontVariants(fonts).map(uploadedFontVariantLabel);
+  if (variants.length <= 4) return variants.join(", ");
+  return `${variants.slice(0, 4).join(", ")} +${variants.length - 4}`;
+}
+
+function UploadedFontBrowserItem({ group, isActive, onSelect, onArchive, onDelete }: { group: UploadedFontGroup; isActive: boolean; onSelect: (group: UploadedFontGroup) => void; onArchive?: (fontId: string) => Promise<void>; onDelete?: (fontId: string) => Promise<void> }) {
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const previewFont = sortUploadedFontVariants(group.fonts).find((font) => font.fontWeight === 400 && font.fontStyle !== "italic") || sortUploadedFontVariants(group.fonts)[0];
 
   useEffect(() => {
-    loadUploadedFontPreview(font);
-  }, [font]);
+    group.fonts.forEach(loadUploadedFontPreview);
+  }, [group.fonts]);
+
+  const archiveGroup = async () => {
+    if (!onArchive || isArchiving || isDeleting) return;
+    setIsArchiving(true);
+    setActionError(null);
+    try {
+      const results = await Promise.allSettled(group.fonts.map((font) => onArchive(font.id)));
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed > 0) setActionError(`Archived ${group.fonts.length - failed} of ${group.fonts.length} variants. ${failed} failed.`);
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const deleteGroup = async () => {
+    if (!onDelete || isArchiving || isDeleting) return;
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${group.family} from the font catalog? This removes ${group.fonts.length} uploaded variant${group.fonts.length === 1 ? "" : "s"}. Existing designs that already use the font URL will keep rendering.`)) return;
+    setIsDeleting(true);
+    setActionError(null);
+    try {
+      const results = await Promise.allSettled(group.fonts.map((font) => onDelete(font.id)));
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed > 0) setActionError(`Deleted ${group.fonts.length - failed} of ${group.fonts.length} variants. ${failed} failed.`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active loyalty-font-browser-item--with-action" : "loyalty-font-browser-item loyalty-font-browser-item--with-action"}>
-      <button type="button" onClick={() => onSelect(font.id)}>
-        <strong style={{ fontFamily: `"${font.fontFamily}", sans-serif`, fontWeight: font.fontWeight || 400 }}>{font.fontFamily}</strong>
-        <small>Uploaded</small>
+      <button type="button" onClick={() => onSelect(group)}>
+        <strong style={{ fontFamily: `"${previewFont?.fontFamily || group.family}", sans-serif`, fontWeight: previewFont?.fontWeight || 400 }}>{group.family}</strong>
+        <small>{group.fonts.length} variant{group.fonts.length === 1 ? "" : "s"} · {uploadedFontGroupSummary(group.fonts)}</small>
       </button>
-      {onArchive ? <button type="button" disabled={isArchiving} onClick={async () => { setIsArchiving(true); try { await onArchive(font.id); } finally { setIsArchiving(false); } }}>Archive</button> : null}
+      <div className="loyalty-font-browser-item__actions">
+        {onArchive ? <button type="button" disabled={isArchiving || isDeleting} onClick={archiveGroup}>{isArchiving ? "Archiving" : "Archive"}</button> : null}
+        {onDelete ? <button type="button" className="loyalty-font-browser-item__delete" disabled={isArchiving || isDeleting} onClick={deleteGroup}>{isDeleting ? "Deleting" : "Delete"}</button> : null}
+      </div>
+      {actionError ? <small className="loyalty-font-browser-item__error">{actionError}</small> : null}
     </div>
   );
 }
@@ -567,8 +617,38 @@ type FontUploadDraft = {
   fontStyle: "normal" | "italic";
 };
 
+type UploadedFontGroup = {
+  id: string;
+  family: string;
+  fonts: LoyaltyCardEditorUploadedFont[];
+};
+
 function fontNameFromFile(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Uploaded font";
+}
+
+function normalizeFontName(value: string) {
+  return String(value || "")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim() || "Uploaded font";
+}
+
+function stripTrailingFontVariant(value: string) {
+  let next = normalizeFontName(value).replace(/\b(variable|vf)\b$/i, "").trim();
+  const variantSuffix = /\s+(extra\s*light|ultra\s*light|extralight|ultralight|thin|hairline|light|regular|normal|medium|semi\s*bold|demi\s*bold|semibold|demibold|extra\s*bold|ultra\s*bold|extrabold|ultrabold|bold|black|heavy|italic|oblique)$/i;
+  while (variantSuffix.test(next)) next = next.replace(variantSuffix, "").trim();
+  return next || normalizeFontName(value);
+}
+
+function normalizeUploadedFontFamilyName(value: string) {
+  return stripTrailingFontVariant(value);
+}
+
+function uploadedFontFamilyKey(value: string) {
+  return normalizeFontName(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uploaded-font";
 }
 
 function inferFontWeight(name: string) {
@@ -591,11 +671,12 @@ function inferFontStyle(name: string): "normal" | "italic" {
 
 function createFontUploadDraft(file: File, index: number): FontUploadDraft {
   const fallbackName = fontNameFromFile(file.name);
+  const fontFamily = normalizeUploadedFontFamilyName(fallbackName);
   return {
     id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
     file,
     name: fallbackName,
-    fontFamily: fallbackName,
+    fontFamily,
     fontWeight: inferFontWeight(fallbackName),
     fontStyle: inferFontStyle(fallbackName),
   };
@@ -1069,6 +1150,7 @@ export function LoyaltyCardEditor({
   onDeleteLibraryAsset,
   onUploadFont,
   onArchiveFont,
+  onDeleteFont,
 }: LoyaltyCardEditorProps) {
   const faceKeys = faces && faces.length ? faces : [...LOYALTY_CARD_FACE_KEYS];
   const [activeFace, setActiveFace] = useState<LoyaltyCardFaceKey>(faceKeys[0]);
@@ -1223,14 +1305,40 @@ export function LoyaltyCardEditor({
       fonts: matchingFonts.filter((font) => font.category === category),
     })).filter((group) => group.fonts.length > 0);
   }, [fontSearch]);
-  const visibleUploadedFonts = useMemo(() => {
-    const query = fontSearch.trim().toLowerCase();
-    return uploadedFonts.filter((font) => {
-      if (!query) return true;
-      return font.name.toLowerCase().includes(query) || font.fontFamily.toLowerCase().includes(query);
+  const uploadedFontGroups = useMemo(() => {
+    const groupsByKey = new Map<string, UploadedFontGroup>();
+    const exactFamilies = uploadedFonts.map((font) => normalizeFontName(font.fontFamily || font.name));
+    const exactKeys = new Set(exactFamilies.map(uploadedFontFamilyKey));
+    const strippedCounts = new Map<string, number>();
+    uploadedFonts.forEach((font) => {
+      const strippedFamily = stripTrailingFontVariant(font.fontFamily || font.name);
+      const strippedKey = uploadedFontFamilyKey(strippedFamily);
+      strippedCounts.set(strippedKey, (strippedCounts.get(strippedKey) || 0) + 1);
     });
-  }, [fontSearch, uploadedFonts]);
-  const visibleFontCount = fontOptionsByCategory.reduce((count, group) => count + group.fonts.length, 0) + visibleUploadedFonts.length;
+    uploadedFonts.forEach((font) => {
+      const exactFamily = normalizeFontName(font.fontFamily || font.name);
+      const strippedFamily = stripTrailingFontVariant(exactFamily);
+      const strippedKey = uploadedFontFamilyKey(strippedFamily);
+      const exactKey = uploadedFontFamilyKey(exactFamily);
+      const shouldGroupByStrippedFamily = strippedKey !== exactKey && ((strippedCounts.get(strippedKey) || 0) > 1 || exactKeys.has(strippedKey));
+      const family = shouldGroupByStrippedFamily ? strippedFamily : exactFamily;
+      const key = uploadedFontFamilyKey(family);
+      const group = groupsByKey.get(key) || { id: key, family, fonts: [] };
+      group.fonts.push(font);
+      groupsByKey.set(key, group);
+    });
+    return Array.from(groupsByKey.values())
+      .map((group) => ({ ...group, fonts: sortUploadedFontVariants(group.fonts) }))
+      .sort((a, b) => a.family.localeCompare(b.family));
+  }, [uploadedFonts]);
+  const visibleUploadedFontGroups = useMemo(() => {
+    const query = fontSearch.trim().toLowerCase();
+    return uploadedFontGroups.filter((group) => {
+      if (!query) return true;
+      return group.family.toLowerCase().includes(query) || group.fonts.some((font) => font.name.toLowerCase().includes(query) || font.fontFamily.toLowerCase().includes(query));
+    });
+  }, [fontSearch, uploadedFontGroups]);
+  const visibleFontCount = fontOptionsByCategory.reduce((count, group) => count + group.fonts.length, 0) + visibleUploadedFontGroups.length;
 
   const applyCatalogFont = (fontKey: string) => {
     const font = loyaltyCardFontCatalog.find((item) => item.key === fontKey);
@@ -1250,8 +1358,16 @@ export function LoyaltyCardEditor({
     setInspectorPane("properties");
   };
 
-  const applyUploadedFont = (fontId: string) => {
-    const font = uploadedFonts.find((item) => item.id === fontId);
+  const chooseUploadedFontVariant = (group: UploadedFontGroup, preferredWeight = 400, preferredStyle: "normal" | "italic" = "normal") => {
+    const sameStyle = group.fonts.filter((font) => (font.fontStyle || "normal") === preferredStyle);
+    const candidates = sameStyle.length ? sameStyle : group.fonts;
+    return candidates.reduce((nearest, font) => (Math.abs((font.fontWeight || 400) - preferredWeight) < Math.abs((nearest.fontWeight || 400) - preferredWeight) ? font : nearest), candidates[0]);
+  };
+
+  const applyUploadedFontGroup = (group: UploadedFontGroup) => {
+    const preferredWeight = selectedElement?.type === "text" ? getTextFontWeight(selectedElement) : 400;
+    const preferredStyle = selectedElement?.type === "text" ? getTextFontStyle(selectedElement) : "normal";
+    const font = chooseUploadedFontVariant(group, preferredWeight, preferredStyle);
     const fontUrl = font ? getUploadedFontUrl(font) : "";
     if (!font || !fontUrl) return;
     loadUploadedFontPreview(font);
@@ -1268,6 +1384,29 @@ export function LoyaltyCardEditor({
       };
     });
     setInspectorPane("properties");
+  };
+
+  const findUploadedFontGroupForElement = (element: Extract<LoyaltyCardElement, { type: "text" }>) => {
+    if (element.fontSource !== "customUrl") return null;
+    return uploadedFontGroups.find((group) => group.fonts.some((font) => font.id === element.fontKey) || uploadedFontFamilyKey(element.fontFamily) === group.id) || null;
+  };
+
+  const applyUploadedVariantToTextElement = (element: Extract<LoyaltyCardElement, { type: "text" }>, weight: number, style: "normal" | "italic") => {
+    const group = findUploadedFontGroupForElement(element);
+    if (!group) return { ...element, fontWeight: weight, fontStyle: style } as LoyaltyCardElement;
+    const font = chooseUploadedFontVariant(group, weight, style);
+    const fontUrl = font ? getUploadedFontUrl(font) : "";
+    if (!font || !fontUrl) return { ...element, fontWeight: weight, fontStyle: style } as LoyaltyCardElement;
+    loadUploadedFontPreview(font);
+    return {
+      ...element,
+      fontSource: "customUrl",
+      fontKey: font.id,
+      fontFamily: font.fontFamily,
+      fontUrl,
+      fontWeight: font.fontWeight || weight,
+      fontStyle: font.fontStyle || style,
+    } as LoyaltyCardElement;
   };
 
   const applyEmptyStampPreset = (asset: LoyaltyCardEditorLibraryAsset) => {
@@ -1868,12 +2007,12 @@ export function LoyaltyCardEditor({
               <label className="field"><span>Search fonts</span><input autoFocus value={fontSearch} onChange={(event) => setFontSearch(event.target.value)} /></label>
               <div className="loyalty-font-browser-count">{visibleFontCount} fonts</div>
               <div className="loyalty-font-browser-list">
-                {visibleUploadedFonts.length ? (
+                {visibleUploadedFontGroups.length ? (
                   <div className="loyalty-font-browser-group">
                     <span>Uploaded fonts</span>
-                    {visibleUploadedFonts.map((font) => {
-                      const isActive = selectedElement.fontSource === "customUrl" && selectedElement.fontKey === font.id;
-                      return <UploadedFontBrowserItem key={font.id} font={font} isActive={isActive} onSelect={applyUploadedFont} onArchive={onArchiveFont} />;
+                    {visibleUploadedFontGroups.map((group) => {
+                      const isActive = selectedElement.fontSource === "customUrl" && (group.fonts.some((font) => font.id === selectedElement.fontKey) || uploadedFontFamilyKey(selectedElement.fontFamily) === group.id);
+                      return <UploadedFontBrowserItem key={group.id} group={group} isActive={isActive} onSelect={applyUploadedFontGroup} onArchive={onArchiveFont} onDelete={onDeleteFont} />;
                     })}
                   </div>
                 ) : null}
@@ -1981,8 +2120,8 @@ export function LoyaltyCardEditor({
                           </button>
                         </div>
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(getTextFontWeight(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontWeight: Number(event.target.value) } : element)}>{fontWeights.map((weight) => <option key={weight} value={String(weight)}>{weight}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={getTextFontStyle(selectedElement)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontStyle: event.target.value as "normal" | "italic" } : element)}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
+                          <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(getTextFontWeight(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, Number(event.target.value), getTextFontStyle(element)) : element)}>{fontWeights.map((weight) => <option key={weight} value={String(weight)}>{weight}</option>)}</select></label>
+                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={getTextFontStyle(selectedElement)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, getTextFontWeight(element), event.target.value as "normal" | "italic") : element)}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
                           <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Font size" /><input type="number" value={selectedElement.fontSize} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontSize: clampNumber(Number(event.target.value), 1, 220) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={TextIcon} label="Line height" /><input type="number" step="0.05" value={selectedElement.lineHeight} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, lineHeight: clampNumber(Number(event.target.value), 0.7, 2.5) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={LetterSpacingIcon} label="Letter spacing" /><input type="number" value={selectedElement.letterSpacing || 0} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, letterSpacing: clampNumber(Number(event.target.value), -20, 80) } : element)} /></label>
