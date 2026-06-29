@@ -1205,6 +1205,13 @@
   color: #ffffff;
   padding: 5px;
   pointer-events: auto;
+  transform-origin: 12px 12px;
+  animation: loyalty-stamp-context-menu-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.loyalty-stamp-context-menu--closing {
+  pointer-events: none;
+  animation: loyalty-stamp-context-menu-out 120ms ease-in both;
 }
 
 .loyalty-stamp-context-menu__item {
@@ -1247,27 +1254,75 @@
   position: absolute;
   left: 100%;
   top: -5px;
-  display: none;
+  display: grid;
+  gap: 1px;
   min-width: 112px;
   border: 1px solid rgb(148 163 184 / 0.42);
   border-radius: 0;
   background: rgb(15 23 42 / 0.96);
   box-shadow: 0 18px 42px rgb(0 0 0 / 0.34);
   padding: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px) scale(0.98);
+  transform-origin: left top;
+  visibility: hidden;
+  transition:
+    opacity 120ms ease,
+    transform 140ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0ms linear 140ms;
 }
 
 .loyalty-stamp-context-menu__item--submenu:hover .loyalty-stamp-context-menu__submenu,
 .loyalty-stamp-context-menu__item--submenu:focus-within .loyalty-stamp-context-menu__submenu {
-  display: grid;
-  gap: 1px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+  visibility: visible;
+  transition-delay: 0ms;
+}
+
+@keyframes loyalty-stamp-context-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes loyalty-stamp-context-menu-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .loyalty-stamp-inline-editor__insert,
   .loyalty-stamp-inline-editor__remove,
   .loyalty-stamp-inline-editor__row-toolbar,
-  .loyalty-stamp-inline-editor__stamp-target::after {
+  .loyalty-stamp-inline-editor__stamp-target::after,
+  .loyalty-stamp-context-menu__submenu {
     transition: none;
+  }
+
+  .loyalty-stamp-context-menu,
+  .loyalty-stamp-context-menu--closing {
+    animation: none;
+  }
+
+  .loyalty-stamp-context-menu--closing {
+    opacity: 0;
+    visibility: hidden;
   }
 }
 

@@ -21,11 +21,12 @@ type SnapGuides = { x?: number; y?: number };
 type Frame = ReturnType<typeof constrainFrame>;
 type SnapCandidate = { delta: number; guide: number; distance: number };
 type StampEditorPointer = { elementId: string; x: number; y: number } | null;
-type StampContextMenu = { elementId: string; row: number; column: number; stampIndex: number; x: number; y: number } | null;
+type StampContextMenu = { elementId: string; row: number; column: number; stampIndex: number; x: number; y: number; closing?: boolean } | null;
 
 const SNAP_THRESHOLD = 6;
 const STAMP_CONTROL_FULL_RADIUS = 34;
 const STAMP_CONTROL_FADE_RADIUS = 112;
+const STAMP_CONTEXT_MENU_EXIT_MS = 120;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -414,6 +415,7 @@ export function LoyaltyCardDesignCanvas({
   const focusStampContextMenuOnOpenRef = useRef(false);
   const autoFitRef = useRef<Record<string, string>>({});
   const stampEditorClearTimeoutRef = useRef<number | null>(null);
+  const stampContextMenuCloseTimeoutRef = useRef<number | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(900);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({});
   const [assetRatios, setAssetRatios] = useState<Record<string, number>>({});
@@ -425,6 +427,25 @@ export function LoyaltyCardDesignCanvas({
   const scale = canvasWidth / schema.canvas.width;
   const selectedGroups = (activeFace.groups || []).filter((group) => group.elementIds.length > 1 && group.elementIds.every((id) => selectedElementIds.includes(id)));
   const groupSelectedElementIds = new Set(selectedGroups.flatMap((group) => group.elementIds));
+
+  function closeStampContextMenu(immediate = false) {
+    focusStampContextMenuOnOpenRef.current = false;
+    if (stampContextMenuCloseTimeoutRef.current !== null) {
+      window.clearTimeout(stampContextMenuCloseTimeoutRef.current);
+      stampContextMenuCloseTimeoutRef.current = null;
+    }
+    if (immediate) {
+      setStampContextMenu(null);
+      return;
+    }
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && stampContextMenuRef.current?.contains(activeElement)) activeElement.blur();
+    setStampContextMenu((current) => current ? { ...current, closing: true } : null);
+    stampContextMenuCloseTimeoutRef.current = window.setTimeout(() => {
+      setStampContextMenu(null);
+      stampContextMenuCloseTimeoutRef.current = null;
+    }, STAMP_CONTEXT_MENU_EXIT_MS);
+  }
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -438,20 +459,21 @@ export function LoyaltyCardDesignCanvas({
 
   useEffect(() => () => {
     if (stampEditorClearTimeoutRef.current !== null) window.clearTimeout(stampEditorClearTimeoutRef.current);
+    if (stampContextMenuCloseTimeoutRef.current !== null) window.clearTimeout(stampContextMenuCloseTimeoutRef.current);
   }, []);
 
   useEffect(() => {
-    setStampContextMenu(null);
+    closeStampContextMenu(true);
   }, [face, selectedElementIds.join(":")]);
 
   useEffect(() => {
     if (!stampContextMenu) return;
     const handlePointerDown = (event: PointerEvent) => {
       if (stampContextMenuRef.current?.contains(event.target as Node)) return;
-      setStampContextMenu(null);
+      closeStampContextMenu();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setStampContextMenu(null);
+      if (event.key === "Escape") closeStampContextMenu();
     };
     if (focusStampContextMenuOnOpenRef.current) {
       window.requestAnimationFrame(() => firstStampContextMenuItemRef.current?.focus());
@@ -722,11 +744,15 @@ export function LoyaltyCardDesignCanvas({
 
   const updateStampGrid = (element: LoyaltyCardStampGridElement, nextElement: LoyaltyCardStampGridElement) => {
     onBeginInteraction?.();
-    setStampContextMenu(null);
+    closeStampContextMenu();
     onChangeElement(element.id, nextElement as LoyaltyCardElement);
   };
 
   const openStampContextMenu = (element: LoyaltyCardStampGridElement, slot: { row: number; column: number; stampIndex: number }, x: number, y: number, focusMenu = false) => {
+    if (stampContextMenuCloseTimeoutRef.current !== null) {
+      window.clearTimeout(stampContextMenuCloseTimeoutRef.current);
+      stampContextMenuCloseTimeoutRef.current = null;
+    }
     focusStampContextMenuOnOpenRef.current = focusMenu;
     setStampContextMenu({
       elementId: element.id,
@@ -860,16 +886,16 @@ export function LoyaltyCardDesignCanvas({
           );
         })}
         {activeMenu ? (
-          <div ref={stampContextMenuRef} className="loyalty-stamp-context-menu" style={{ left: activeMenu.x * scale, top: activeMenu.y * scale }} role="menu" onPointerDown={handlePointer}>
-            <button ref={firstStampContextMenuItemRef} type="button" className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--danger" onClick={() => updateStampGrid(element, removeStampSlot(element, activeMenu.row, activeMenu.column, runtimeCount))} role="menuitem">
+          <div ref={stampContextMenuRef} className={activeMenu.closing ? "loyalty-stamp-context-menu loyalty-stamp-context-menu--closing" : "loyalty-stamp-context-menu"} style={{ left: activeMenu.x * scale, top: activeMenu.y * scale }} role="menu" aria-hidden={activeMenu.closing || undefined} onPointerDown={handlePointer}>
+            <button ref={firstStampContextMenuItemRef} type="button" className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--danger" disabled={activeMenu.closing} onClick={() => updateStampGrid(element, removeStampSlot(element, activeMenu.row, activeMenu.column, runtimeCount))} role="menuitem">
               Delete stamp
             </button>
-            <div className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--submenu" role="menuitem" tabIndex={0} aria-haspopup="menu">
+            <div className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--submenu" role="menuitem" tabIndex={activeMenu.closing ? -1 : 0} aria-haspopup="menu">
               <span>Row alignment</span>
               <span aria-hidden="true">›</span>
               <div className="loyalty-stamp-context-menu__submenu" role="menu">
                 {(["left", "center", "right"] as const).map((align) => (
-                  <button key={align} type="button" className={layout.rowAlignments[activeMenu.row] === align ? "loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--active" : "loyalty-stamp-context-menu__item"} onClick={() => updateStampGrid(element, alignStampRow(element, activeMenu.row, align, runtimeCount))} role="menuitem">
+                  <button key={align} type="button" className={layout.rowAlignments[activeMenu.row] === align ? "loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--active" : "loyalty-stamp-context-menu__item"} disabled={activeMenu.closing} onClick={() => updateStampGrid(element, alignStampRow(element, activeMenu.row, align, runtimeCount))} role="menuitem">
                     {align[0].toUpperCase() + align.slice(1)}
                   </button>
                 ))}
