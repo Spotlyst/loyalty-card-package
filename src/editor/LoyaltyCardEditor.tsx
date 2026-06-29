@@ -43,7 +43,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import { AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlignVerticalSpaceBetween, Archive, ArrowDown, ArrowLeft, ArrowUp, BringToFront, Circle, Crosshair, Eye, EyeOff, GripVertical, Grid3X3, Image, Link, Lock, Minus, RotateCcw, SendToBack, Shapes, Square, Trash2, Type, Unlock, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
 import type {
   LoyaltyCardBackground,
@@ -558,45 +558,182 @@ function LibraryAssetUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["o
   );
 }
 
+type FontUploadDraft = {
+  id: string;
+  file: File;
+  name: string;
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
+};
+
+function fontNameFromFile(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Uploaded font";
+}
+
+function inferFontWeight(name: string) {
+  const normalized = name.toLowerCase();
+  if (/thin|hairline/.test(normalized)) return 100;
+  if (/extra\s*light|ultra\s*light/.test(normalized)) return 200;
+  if (/light/.test(normalized)) return 300;
+  if (/regular|normal|book|roman/.test(normalized)) return 400;
+  if (/medium/.test(normalized)) return 500;
+  if (/semi\s*bold|demi\s*bold/.test(normalized)) return 600;
+  if (/extra\s*bold|ultra\s*bold/.test(normalized)) return 800;
+  if (/black|heavy/.test(normalized)) return 900;
+  if (/bold/.test(normalized)) return 700;
+  return 400;
+}
+
+function inferFontStyle(name: string): "normal" | "italic" {
+  return /italic|oblique/i.test(name) ? "italic" : "normal";
+}
+
+function createFontUploadDraft(file: File, index: number): FontUploadDraft {
+  const fallbackName = fontNameFromFile(file.name);
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+    file,
+    name: fallbackName,
+    fontFamily: fallbackName,
+    fontWeight: inferFontWeight(fallbackName),
+    fontStyle: inferFontStyle(fallbackName),
+  };
+}
+
 function FontUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadFont"] }) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [name, setName] = useState("");
-  const [fontFamily, setFontFamily] = useState("");
-  const [fontWeight, setFontWeight] = useState(400);
-  const [fontStyle, setFontStyle] = useState<"normal" | "italic">("normal");
+  const [isOpen, setIsOpen] = useState(false);
+  const [drafts, setDrafts] = useState<FontUploadDraft[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+  }, [isOpen]);
+
   if (!onUpload) return null;
 
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    const fallbackName = file.name.replace(/\.[^.]+$/, "");
+  const resetForm = () => {
+    setDrafts([]);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const closeModal = () => {
+    if (isUploading) return;
+    setIsOpen(false);
+    resetForm();
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const updateDraft = (id: string, patch: Partial<Omit<FontUploadDraft, "id" | "file">>) => {
+    setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
+  };
+
+  const handleFiles = (files: FileList | null) => {
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
+    setDrafts(selectedFiles.map(createFontUploadDraft));
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModal();
+      return;
+    }
+    if (event.key !== "Tab" || !modalRef.current) return;
+    const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute("disabled") && element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!drafts.length) {
+      setError("Choose one or more font files first");
+      return;
+    }
     setIsUploading(true);
     setError(null);
+    let remainingDrafts = drafts;
     try {
-      await onUpload(file, { name: name.trim() || fallbackName, fontFamily: fontFamily.trim() || name.trim() || fallbackName, fontWeight, fontStyle });
-      setName("");
-      setFontFamily("");
+      for (const draft of drafts) {
+        const fallbackName = fontNameFromFile(draft.file.name);
+        await onUpload(draft.file, {
+          name: draft.name.trim() || fallbackName,
+          fontFamily: draft.fontFamily.trim() || draft.name.trim() || fallbackName,
+          fontWeight: draft.fontWeight,
+          fontStyle: draft.fontStyle,
+        });
+        remainingDrafts = remainingDrafts.filter((item) => item.id !== draft.id);
+        setDrafts(remainingDrafts);
+      }
+      setIsOpen(false);
+      resetForm();
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
     } catch (uploadError) {
+      setDrafts(remainingDrafts);
       setError(uploadError instanceof Error ? uploadError.message : "Font upload failed");
     } finally {
       setIsUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
   return (
-    <div className="loyalty-library-upload">
-      <label className="field"><span>Font name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" /></label>
-      <label className="field"><span>Font family</span><input value={fontFamily} onChange={(event) => setFontFamily(event.target.value)} placeholder="Display name" /></label>
-      <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-        <label className="field"><span>Weight</span><select value={fontWeight} onChange={(event) => setFontWeight(Number(event.target.value))}>{fontWeights.map((weight) => <option key={weight} value={weight}>{weight}</option>)}</select></label>
-        <label className="field"><span>Style</span><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value as "normal" | "italic")}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
-      </div>
-      <input ref={inputRef} className="loyalty-image-url-file" type="file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => handleFile(event.target.files?.[0])} />
-      <button type="button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{isUploading ? "Uploading" : "Upload font"}</button>
-      {error ? <small className="loyalty-image-url-error">{error}</small> : null}
-    </div>
+    <>
+      <button ref={triggerRef} type="button" className="loyalty-font-upload-trigger" onClick={() => setIsOpen(true)}><UploadCloud size={14} />Upload fonts</button>
+      {isOpen ? (
+        <div className="loyalty-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
+          <div ref={modalRef} className="loyalty-modal-card loyalty-modal-card--font-upload" role="dialog" aria-modal="true" aria-labelledby="loyalty-font-upload-title" onKeyDown={handleDialogKeyDown}>
+            <div className="loyalty-modal-header">
+              <div>
+                <strong id="loyalty-font-upload-title">Upload fonts</strong>
+                <small>Upload WOFF2, WOFF, TTF, or OTF files to the font catalog.</small>
+              </div>
+              <button ref={closeButtonRef} type="button" aria-label="Close upload dialog" disabled={isUploading} onClick={closeModal}>x</button>
+            </div>
+            <div className="loyalty-font-upload-modal">
+              <input ref={inputRef} className="loyalty-image-url-file" type="file" multiple accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => handleFiles(event.target.files)} />
+              <button type="button" className="loyalty-file-picker-button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{drafts.length ? `${drafts.length} file${drafts.length === 1 ? "" : "s"} selected` : "Choose font files"}</button>
+              {drafts.length ? (
+                <div className="loyalty-font-upload-list">
+                  {drafts.map((draft) => (
+                    <div key={draft.id} className="loyalty-font-upload-row">
+                      <div className="loyalty-font-upload-row__file"><strong>{draft.file.name}</strong><small>{Math.ceil(draft.file.size / 1024)} KB</small></div>
+                      <label className="field"><span>Font name</span><input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} /></label>
+                      <label className="field"><span>Font family</span><input value={draft.fontFamily} onChange={(event) => updateDraft(draft.id, { fontFamily: event.target.value })} /></label>
+                      <label className="field"><span>Weight</span><select value={draft.fontWeight} onChange={(event) => updateDraft(draft.id, { fontWeight: Number(event.target.value) })}>{fontWeights.map((weight) => <option key={weight} value={weight}>{weight}</option>)}</select></label>
+                      <label className="field"><span>Style</span><select value={draft.fontStyle} onChange={(event) => updateDraft(draft.id, { fontStyle: event.target.value as "normal" | "italic" })}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
+                      <button type="button" className="loyalty-font-upload-row__remove" disabled={isUploading} onClick={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              ) : <small className="loyalty-upload-hint">Names, families, weights, and italic style are prefilled from file names when possible.</small>}
+              {error ? <small className="loyalty-image-url-error">{error}</small> : null}
+              <div className="loyalty-modal-actions">
+                <button type="button" disabled={isUploading} onClick={closeModal}>Cancel</button>
+                <button type="button" disabled={isUploading || !drafts.length} onClick={handleUpload}>{isUploading ? "Uploading" : `Upload${drafts.length > 1 ? ` ${drafts.length} fonts` : ""}`}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1491,6 +1628,7 @@ export function LoyaltyCardEditor({
           <h1>{title}</h1>
         </div>
         <div className="loyalty-studio-topbar-controls">
+          <FontUpload onUpload={onUploadFont} />
           <button
             type="button"
             className="loyalty-theme-toggle"
@@ -1729,7 +1867,6 @@ export function LoyaltyCardEditor({
               </div>
               <label className="field"><span>Search fonts</span><input autoFocus value={fontSearch} onChange={(event) => setFontSearch(event.target.value)} /></label>
               <div className="loyalty-font-browser-count">{visibleFontCount} fonts</div>
-              <FontUpload onUpload={onUploadFont} />
               <div className="loyalty-font-browser-list">
                 {visibleUploadedFonts.length ? (
                   <div className="loyalty-font-browser-group">

@@ -191,6 +191,7 @@
 }
 
 .loyalty-theme-toggle,
+.loyalty-font-upload-trigger,
 .loyalty-studio-actions .ghost-button,
 .loyalty-studio-actions .primary-button {
   display: inline-flex;
@@ -212,6 +213,7 @@
 }
 
 .loyalty-theme-toggle svg,
+.loyalty-font-upload-trigger svg,
 .loyalty-studio-actions .ghost-button svg,
 .loyalty-studio-actions .primary-button svg {
   flex: 0 0 auto;
@@ -226,6 +228,12 @@
   color: #ffffff;
 }
 
+.loyalty-font-upload-trigger {
+  width: auto;
+  min-width: 118px;
+  padding: 0 13px;
+}
+
 .loyalty-studio-page--theme-dark .loyalty-studio-actions .primary-button {
   color: #0b1220;
 }
@@ -236,6 +244,7 @@
 
 .loyalty-studio-actions .ghost-button:hover:not(:disabled),
 .loyalty-studio-actions .primary-button:hover:not(:disabled),
+.loyalty-font-upload-trigger:hover:not(:disabled),
 .loyalty-theme-toggle:hover {
   border-color: var(--accent-border);
   background: var(--accent-soft);
@@ -1683,6 +1692,10 @@
   padding: 16px;
 }
 
+.loyalty-modal-card--font-upload {
+  width: min(760px, 100%);
+}
+
 .loyalty-studio-page--theme-dark .loyalty-modal-card {
   background: #111827;
 }
@@ -1814,9 +1827,87 @@
 
 .loyalty-modal-actions button:disabled,
 .loyalty-file-picker-button:disabled,
-.loyalty-library-upload-trigger:disabled {
+.loyalty-library-upload-trigger:disabled,
+.loyalty-font-upload-trigger:disabled {
   cursor: not-allowed;
   opacity: 0.56;
+}
+
+.loyalty-font-upload-modal {
+  display: grid;
+  gap: 12px;
+}
+
+.loyalty-font-upload-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(52dvh, 520px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.loyalty-font-upload-row {
+  display: grid;
+  grid-template-columns: minmax(136px, 1.2fr) minmax(110px, 1fr) minmax(110px, 1fr) 86px 86px auto;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 10px;
+}
+
+.loyalty-font-upload-row__file {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  align-self: center;
+}
+
+.loyalty-font-upload-row__file strong,
+.loyalty-font-upload-row__file small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loyalty-font-upload-row__file strong {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.loyalty-font-upload-row__file small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.loyalty-font-upload-row__remove {
+  min-height: 36px;
+  border: 1px solid rgb(239 68 68 / 0.28);
+  border-radius: 9px;
+  background: var(--control-bg);
+  color: var(--danger);
+  padding: 0 10px;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.loyalty-font-upload-row__remove:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+@media (max-width: 860px) {
+  .loyalty-font-upload-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .loyalty-font-upload-row__file,
+  .loyalty-font-upload-row__remove {
+    grid-column: 1 / -1;
+  }
 }
 
 .loyalty-asset-library-list,
