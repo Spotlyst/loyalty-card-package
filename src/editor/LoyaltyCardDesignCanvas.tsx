@@ -1,6 +1,6 @@
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { resolveLoyaltyCardToken, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardStampSlot, type LoyaltyCardTokens } from "../schema.js";
 import { resolveFittedStampGridLayout } from "../stampGridLayout.js";
 
@@ -21,6 +21,7 @@ type SnapGuides = { x?: number; y?: number };
 type Frame = ReturnType<typeof constrainFrame>;
 type SnapCandidate = { delta: number; guide: number; distance: number };
 type StampEditorPointer = { elementId: string; x: number; y: number } | null;
+type StampContextMenu = { elementId: string; row: number; column: number; stampIndex: number; x: number; y: number } | null;
 
 const SNAP_THRESHOLD = 6;
 const STAMP_CONTROL_FULL_RADIUS = 34;
@@ -408,12 +409,16 @@ export function LoyaltyCardDesignCanvas({
   onChangeElements,
 }: LoyaltyCardDesignCanvasProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const stampContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const firstStampContextMenuItemRef = useRef<HTMLButtonElement | null>(null);
+  const focusStampContextMenuOnOpenRef = useRef(false);
   const autoFitRef = useRef<Record<string, string>>({});
   const stampEditorClearTimeoutRef = useRef<number | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(900);
   const [snapGuides, setSnapGuides] = useState<SnapGuides>({});
   const [assetRatios, setAssetRatios] = useState<Record<string, number>>({});
   const [stampEditorPointer, setStampEditorPointer] = useState<StampEditorPointer>(null);
+  const [stampContextMenu, setStampContextMenu] = useState<StampContextMenu>(null);
   const activeFace = schema.faces[face] || schema.faces.front;
   const visibleElements = activeFace.elements.filter((element) => !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeFace.elements.find((element) => element.id === selectedElementIds[0]) || null : null;
@@ -434,6 +439,31 @@ export function LoyaltyCardDesignCanvas({
   useEffect(() => () => {
     if (stampEditorClearTimeoutRef.current !== null) window.clearTimeout(stampEditorClearTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    setStampContextMenu(null);
+  }, [face, selectedElementIds.join(":")]);
+
+  useEffect(() => {
+    if (!stampContextMenu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (stampContextMenuRef.current?.contains(event.target as Node)) return;
+      setStampContextMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setStampContextMenu(null);
+    };
+    if (focusStampContextMenuOnOpenRef.current) {
+      window.requestAnimationFrame(() => firstStampContextMenuItemRef.current?.focus());
+      focusStampContextMenuOnOpenRef.current = false;
+    }
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [stampContextMenu]);
 
   useEffect(() => {
     activeFace.elements.forEach((element) => {
@@ -692,7 +722,36 @@ export function LoyaltyCardDesignCanvas({
 
   const updateStampGrid = (element: LoyaltyCardStampGridElement, nextElement: LoyaltyCardStampGridElement) => {
     onBeginInteraction?.();
+    setStampContextMenu(null);
     onChangeElement(element.id, nextElement as LoyaltyCardElement);
+  };
+
+  const openStampContextMenu = (element: LoyaltyCardStampGridElement, slot: { row: number; column: number; stampIndex: number }, x: number, y: number, focusMenu = false) => {
+    focusStampContextMenuOnOpenRef.current = focusMenu;
+    setStampContextMenu({
+      elementId: element.id,
+      row: slot.row,
+      column: slot.column,
+      stampIndex: slot.stampIndex,
+      x,
+      y,
+    });
+  };
+
+  const handleStampContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, element: LoyaltyCardStampGridElement, slot: { row: number; column: number; stampIndex: number }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const host = event.currentTarget.closest(".loyalty-design-canvas__element") as HTMLElement | null;
+    const rect = host?.getBoundingClientRect();
+    if (!rect) return;
+    openStampContextMenu(element, slot, (event.clientX - rect.left) / scale, (event.clientY - rect.top) / scale);
+  };
+
+  const handleStampContextKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, element: LoyaltyCardStampGridElement, slot: { row: number; column: number; stampIndex: number }, x: number, y: number) => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openStampContextMenu(element, slot, x, y, true);
   };
 
   const updateStampEditorPointer = (event: ReactPointerEvent<HTMLDivElement>, element: LoyaltyCardElement) => {
@@ -752,8 +811,9 @@ export function LoyaltyCardDesignCanvas({
       event.preventDefault();
       event.stopPropagation();
     };
+    const activeMenu = stampContextMenu?.elementId === element.id ? stampContextMenu : null;
     return (
-      <div className="loyalty-stamp-inline-editor" style={{ inset: 0 }} onPointerDown={(event) => event.stopPropagation()}>
+      <div className="loyalty-stamp-inline-editor" style={{ inset: 0 }}>
         {rowSlots.map((slots, row) => {
           const y = offset.y + row * (layout.cellSize + layout.gap) + layout.cellSize / 2;
           return (
@@ -775,8 +835,48 @@ export function LoyaltyCardDesignCanvas({
           const slots = rowSlots[row] || [];
           const position = Math.max(0, slots.findIndex((candidate) => candidate.id === slot.id));
           const point = slotPosition(row, position);
-          return <button key={slot.id} type="button" className="loyalty-stamp-inline-editor__remove" style={{ left: (point.x + layout.cellSize - 9) * scale, top: (point.y - 9) * scale, ...stampControlRevealStyle(element, point.x + layout.cellSize + 2, point.y + 2) }} onPointerDown={handlePointer} onClick={() => updateStampGrid(element, removeStampSlot(element, slot.row, slot.column, runtimeCount))} aria-label={`Remove stamp ${slot.stampIndex + 1}`} />;
+          return (
+            <button
+              key={slot.id}
+              type="button"
+              className="loyalty-stamp-inline-editor__stamp-target"
+              style={{ left: point.x * scale, top: point.y * scale, width: layout.cellSize * scale, height: layout.cellSize * scale }}
+              onPointerDown={(event) => {
+                if (event.button === 2) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onClick={(event) => {
+                if (event.detail !== 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                openStampContextMenu(element, slot, point.x + layout.cellSize * 0.72, point.y + layout.cellSize * 0.42, true);
+              }}
+              onContextMenu={(event) => handleStampContextMenu(event, element, slot)}
+              onKeyDown={(event) => handleStampContextKeyDown(event, element, slot, point.x + layout.cellSize * 0.72, point.y + layout.cellSize * 0.42)}
+              aria-label={`Open stamp ${slot.stampIndex + 1} menu`}
+            />
+          );
         })}
+        {activeMenu ? (
+          <div ref={stampContextMenuRef} className="loyalty-stamp-context-menu" style={{ left: activeMenu.x * scale, top: activeMenu.y * scale }} role="menu" onPointerDown={handlePointer}>
+            <button ref={firstStampContextMenuItemRef} type="button" className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--danger" onClick={() => updateStampGrid(element, removeStampSlot(element, activeMenu.row, activeMenu.column, runtimeCount))} role="menuitem">
+              Delete stamp
+            </button>
+            <div className="loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--submenu" role="menuitem" tabIndex={0} aria-haspopup="menu">
+              <span>Row alignment</span>
+              <span aria-hidden="true">›</span>
+              <div className="loyalty-stamp-context-menu__submenu" role="menu">
+                {(["left", "center", "right"] as const).map((align) => (
+                  <button key={align} type="button" className={layout.rowAlignments[activeMenu.row] === align ? "loyalty-stamp-context-menu__item loyalty-stamp-context-menu__item--active" : "loyalty-stamp-context-menu__item"} onClick={() => updateStampGrid(element, alignStampRow(element, activeMenu.row, align, runtimeCount))} role="menuitem">
+                    {align[0].toUpperCase() + align.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
         {Array.from({ length: layout.columns }).map((_, column) => {
           const x = offset.x + column * (layout.cellSize + layout.gap) + layout.cellSize / 2;
           const align = stampRowAlignFromColumn(column, layout.columns);
