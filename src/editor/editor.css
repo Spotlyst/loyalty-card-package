@@ -1848,13 +1848,24 @@
 
 .loyalty-font-upload-row {
   display: grid;
-  grid-template-columns: minmax(136px, 1.2fr) minmax(110px, 1fr) minmax(110px, 1fr) 86px 86px auto;
-  gap: 8px;
-  align-items: end;
+  gap: 10px;
   border: 1px solid var(--stroke);
   border-radius: 12px;
   background: var(--surface-soft);
-  padding: 10px;
+  padding: 12px;
+}
+
+.loyalty-font-upload-row__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.loyalty-font-upload-row__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .loyalty-font-upload-row__file {
@@ -1899,14 +1910,31 @@
   background: var(--danger-soft);
 }
 
-@media (max-width: 860px) {
-  .loyalty-font-upload-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
+.loyalty-font-upload-row__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-active-text);
+  padding: 0 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
 
-  .loyalty-font-upload-row__file,
-  .loyalty-font-upload-row__remove {
-    grid-column: 1 / -1;
+.loyalty-font-upload-row__hint {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+@media (max-width: 860px) {
+  .loyalty-font-upload-row__header,
+  .loyalty-font-upload-row__fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

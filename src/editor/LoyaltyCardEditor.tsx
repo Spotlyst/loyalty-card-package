@@ -60,6 +60,8 @@ const CANVAS_HEIGHT = LOYALTY_CARD_CANVAS_HEIGHT;
 
 const textTokens = ["{{venueName}}", "{{tierName}}", "{{rewardTitle}}", "{{rewardDescription}}", "{{stampsCollected}}", "{{stampsRequired}}"];
 const fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+const cssFontWeightMin = 1;
+const cssFontWeightMax = 1000;
 const fontCategories = ["sans", "serif", "display", "script", "handwritten", "condensed", "retro", "luxury", "poster", "multilingual"] as const;
 const HISTORY_LIMIT = 80;
 const EDITOR_THEME_STORAGE_KEY = "spotlyst.loyaltyCardEditor.theme";
@@ -116,6 +118,11 @@ export type LoyaltyCardEditorUploadedFont = {
   cdnUrl?: string;
   fontWeight?: number;
   fontStyle?: "normal" | "italic";
+  isVariable?: boolean;
+  fontWeightMin?: number;
+  fontWeightMax?: number;
+  fontWeightDefault?: number;
+  variationAxes?: Array<{ tag: string; name?: string; min: number; max: number; default?: number }>;
 };
 
 export type LoyaltyCardEditorProps = {
@@ -333,11 +340,59 @@ function getTextFontKey(element: Extract<LoyaltyCardElement, { type: "text" }>) 
 }
 
 function getTextFontWeight(element: Extract<LoyaltyCardElement, { type: "text" }>) {
-  return fontWeights.includes(element.fontWeight) ? element.fontWeight : 700;
+  const weight = Math.round(Number(element.fontWeight));
+  return Number.isFinite(weight) ? clampNumber(weight, cssFontWeightMin, cssFontWeightMax) : 700;
+}
+
+function withCurrentFontWeight(options: number[], weight: number, includeCurrent = true) {
+  const sanitized = options.map((option) => Math.round(option)).filter((option) => option >= cssFontWeightMin && option <= cssFontWeightMax);
+  const next = includeCurrent && !sanitized.includes(weight) ? [...sanitized, weight] : sanitized;
+  return Array.from(new Set(next)).sort((a, b) => a - b);
+}
+
+function getVariableFontWeightOptions(min = 100, max = 900, currentWeight = 400) {
+  const safeMin = clampNumber(Math.round(Number(min)), cssFontWeightMin, cssFontWeightMax);
+  const safeMax = clampNumber(Math.round(Number(max)), safeMin, cssFontWeightMax);
+  const firstStep = Math.ceil(safeMin / 100) * 100;
+  const options: number[] = [];
+  if (safeMin !== firstStep) options.push(safeMin);
+  for (let weight = firstStep; weight <= safeMax; weight += 100) options.push(weight);
+  if (!options.includes(safeMax)) options.push(safeMax);
+  return withCurrentFontWeight(options, currentWeight, currentWeight >= safeMin && currentWeight <= safeMax);
+}
+
+function formatFontWeightOption(weight: number) {
+  const labels: Record<number, string> = {
+    100: "Thin",
+    200: "Extra Light",
+    300: "Light",
+    400: "Regular",
+    500: "Medium",
+    600: "Semibold",
+    700: "Bold",
+    800: "Extra Bold",
+    900: "Black",
+    1000: "Extra Black",
+  };
+  return labels[weight] ? `${weight} ${labels[weight]}` : String(weight);
+}
+
+function closestFontWeight(options: number[], weight: number) {
+  return options.reduce((nearest, option) => (Math.abs(option - weight) < Math.abs(nearest - weight) ? option : nearest), options[0] || weight);
 }
 
 function getTextFontStyle(element: Extract<LoyaltyCardElement, { type: "text" }>) {
   return element.fontStyle === "italic" ? "italic" : "normal";
+}
+
+function withCurrentFontStyle(options: Array<"normal" | "italic">, style: "normal" | "italic", includeCurrent = true): Array<"normal" | "italic"> {
+  const sanitized = options.filter((option): option is "normal" | "italic" => option === "normal" || option === "italic");
+  const next = includeCurrent && !sanitized.includes(style) ? [...sanitized, style] : sanitized;
+  return Array.from(new Set(next.length ? next : ["normal" as const]));
+}
+
+function formatFontStyleOption(style: "normal" | "italic") {
+  return style === "italic" ? "Italic" : "Normal";
 }
 
 function getFontPreviewWeight(font: LoyaltyCardFontCatalogItem) {
@@ -423,7 +478,8 @@ function loadUploadedFontPreview(font: LoyaltyCardEditorUploadedFont) {
   loadedPreviewFontKeys.add(key);
   const style = document.createElement("style");
   style.setAttribute("data-spotlyst-uploaded-font", font.id);
-  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-style:${font.fontStyle || "normal"};font-weight:${font.fontWeight || 400};font-display:swap;}`;
+  const weightDescriptor = font.isVariable ? `${font.fontWeightMin || 100} ${font.fontWeightMax || 900}` : String(font.fontWeight || 400);
+  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-style:${font.fontStyle || "normal"};font-weight:${weightDescriptor};font-display:swap;}`;
   document.head.appendChild(style);
 }
 
@@ -432,6 +488,7 @@ function sortUploadedFontVariants(fonts: LoyaltyCardEditorUploadedFont[]) {
 }
 
 function uploadedFontVariantLabel(font: LoyaltyCardEditorUploadedFont) {
+  if (font.isVariable) return `Variable ${font.fontWeightMin || 100}-${font.fontWeightMax || 900}${font.fontStyle === "italic" ? " italic" : ""}`;
   const weight = font.fontWeight || 400;
   return `${weight}${font.fontStyle === "italic" ? " italic" : ""}`;
 }
@@ -615,6 +672,7 @@ type FontUploadDraft = {
   fontFamily: string;
   fontWeight: number;
   fontStyle: "normal" | "italic";
+  isLikelyVariable: boolean;
 };
 
 type UploadedFontGroup = {
@@ -669,6 +727,10 @@ function inferFontStyle(name: string): "normal" | "italic" {
   return /italic|oblique/i.test(name) ? "italic" : "normal";
 }
 
+function isLikelyVariableFontFile(name: string) {
+  return /(^|[\s_-])(variable|vf)([\s_.-]|$)/i.test(name);
+}
+
 function createFontUploadDraft(file: File, index: number): FontUploadDraft {
   const fallbackName = fontNameFromFile(file.name);
   const fontFamily = normalizeUploadedFontFamilyName(fallbackName);
@@ -679,6 +741,7 @@ function createFontUploadDraft(file: File, index: number): FontUploadDraft {
     fontFamily,
     fontWeight: inferFontWeight(fallbackName),
     fontStyle: inferFontStyle(fallbackName),
+    isLikelyVariable: isLikelyVariableFontFile(fallbackName),
   };
 }
 
@@ -784,7 +847,7 @@ function FontUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadF
             <div className="loyalty-modal-header">
               <div>
                 <strong id="loyalty-font-upload-title">Upload fonts</strong>
-                <small>Upload WOFF2, WOFF, TTF, or OTF files to the font catalog.</small>
+                <small>Upload WOFF2, WOFF, TTF, or OTF files. Variable axes are detected after upload.</small>
               </div>
               <button ref={closeButtonRef} type="button" aria-label="Close upload dialog" disabled={isUploading} onClick={closeModal}>x</button>
             </div>
@@ -795,12 +858,18 @@ function FontUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadF
                 <div className="loyalty-font-upload-list">
                   {drafts.map((draft) => (
                     <div key={draft.id} className="loyalty-font-upload-row">
-                      <div className="loyalty-font-upload-row__file"><strong>{draft.file.name}</strong><small>{Math.ceil(draft.file.size / 1024)} KB</small></div>
-                      <label className="field"><span>Font name</span><input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} /></label>
-                      <label className="field"><span>Font family</span><input value={draft.fontFamily} onChange={(event) => updateDraft(draft.id, { fontFamily: event.target.value })} /></label>
-                      <label className="field"><span>Weight</span><select value={draft.fontWeight} onChange={(event) => updateDraft(draft.id, { fontWeight: Number(event.target.value) })}>{fontWeights.map((weight) => <option key={weight} value={weight}>{weight}</option>)}</select></label>
-                      <label className="field"><span>Style</span><select value={draft.fontStyle} onChange={(event) => updateDraft(draft.id, { fontStyle: event.target.value as "normal" | "italic" })}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
-                      <button type="button" className="loyalty-font-upload-row__remove" disabled={isUploading} onClick={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}>Remove</button>
+                      <div className="loyalty-font-upload-row__header">
+                        <div className="loyalty-font-upload-row__file"><strong>{draft.file.name}</strong><small>{Math.ceil(draft.file.size / 1024)} KB</small></div>
+                        {draft.isLikelyVariable ? <span className="loyalty-font-upload-row__badge">Likely variable</span> : null}
+                        <button type="button" className="loyalty-font-upload-row__remove" disabled={isUploading} onClick={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}>Remove</button>
+                      </div>
+                      <div className="loyalty-font-upload-row__fields">
+                        <label className="field"><span>Font name</span><input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} /></label>
+                        <label className="field"><span>Font family</span><input value={draft.fontFamily} onChange={(event) => updateDraft(draft.id, { fontFamily: event.target.value })} /></label>
+                        <label className="field"><span>{draft.isLikelyVariable ? "Preview weight" : "Weight"}</span><input type="number" min={1} max={1000} value={draft.fontWeight} onChange={(event) => updateDraft(draft.id, { fontWeight: clampNumber(Math.round(Number(event.target.value)), 1, 1000) })} /></label>
+                        <label className="field"><span>Style</span><select value={draft.fontStyle} onChange={(event) => updateDraft(draft.id, { fontStyle: event.target.value as "normal" | "italic" })}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
+                      </div>
+                      {draft.isLikelyVariable ? <small className="loyalty-font-upload-row__hint">If this file has a weight axis, it will be stored as a variable font after upload.</small> : null}
                     </div>
                   ))}
                 </div>
@@ -1351,6 +1420,10 @@ export function LoyaltyCardEditor({
         fontKey: font.key,
         fontFamily: font.family,
         fontUrl: "",
+        fontIsVariable: undefined,
+        fontWeightMin: undefined,
+        fontWeightMax: undefined,
+        fontWeightDefault: undefined,
         fontWeight: font.weights.includes(element.fontWeight) ? element.fontWeight : getFontPreviewWeight(font),
         fontStyle: font.styles.includes(element.fontStyle || "normal") ? element.fontStyle : "normal",
       };
@@ -1361,6 +1434,8 @@ export function LoyaltyCardEditor({
   const chooseUploadedFontVariant = (group: UploadedFontGroup, preferredWeight = 400, preferredStyle: "normal" | "italic" = "normal") => {
     const sameStyle = group.fonts.filter((font) => (font.fontStyle || "normal") === preferredStyle);
     const candidates = sameStyle.length ? sameStyle : group.fonts;
+    const variable = candidates.find((font) => font.isVariable && preferredWeight >= (font.fontWeightMin || 100) && preferredWeight <= (font.fontWeightMax || 900));
+    if (variable) return variable;
     return candidates.reduce((nearest, font) => (Math.abs((font.fontWeight || 400) - preferredWeight) < Math.abs((nearest.fontWeight || 400) - preferredWeight) ? font : nearest), candidates[0]);
   };
 
@@ -1379,7 +1454,11 @@ export function LoyaltyCardEditor({
         fontKey: font.id,
         fontFamily: font.fontFamily,
         fontUrl,
-        fontWeight: font.fontWeight || element.fontWeight || 400,
+        fontIsVariable: Boolean(font.isVariable),
+        fontWeightMin: font.fontWeightMin,
+        fontWeightMax: font.fontWeightMax,
+        fontWeightDefault: font.fontWeightDefault,
+        fontWeight: font.isVariable ? clampNumber(preferredWeight, font.fontWeightMin || 100, font.fontWeightMax || 900) : font.fontWeight || element.fontWeight || 400,
         fontStyle: font.fontStyle || "normal",
       };
     });
@@ -1389,6 +1468,52 @@ export function LoyaltyCardEditor({
   const findUploadedFontGroupForElement = (element: Extract<LoyaltyCardElement, { type: "text" }>) => {
     if (element.fontSource !== "customUrl") return null;
     return uploadedFontGroups.find((group) => group.fonts.some((font) => font.id === element.fontKey) || uploadedFontFamilyKey(element.fontFamily) === group.id) || null;
+  };
+
+  const getAvailableTextWeights = (element: Extract<LoyaltyCardElement, { type: "text" }>) => {
+    const currentWeight = getTextFontWeight(element);
+    if (element.fontSource === "customUrl") {
+      const group = findUploadedFontGroupForElement(element);
+      const preferredStyle = getTextFontStyle(element);
+      const selectedFont = group?.fonts.find((font) => font.id === element.fontKey);
+      const styleFonts = group?.fonts.filter((font) => (font.fontStyle || "normal") === preferredStyle) || [];
+      const candidates = styleFonts.length ? styleFonts : group?.fonts || [];
+      const variableFont = selectedFont?.isVariable ? selectedFont : candidates.find((font) => font.isVariable);
+      if (variableFont || element.fontIsVariable) {
+        return getVariableFontWeightOptions(variableFont?.fontWeightMin ?? element.fontWeightMin ?? 100, variableFont?.fontWeightMax ?? element.fontWeightMax ?? 900, currentWeight);
+      }
+      const staticWeights = candidates.map((font) => Math.round(Number(font.fontWeight || 400))).filter((weight) => Number.isFinite(weight));
+      if (staticWeights.length) return withCurrentFontWeight(staticWeights, currentWeight, staticWeights.includes(currentWeight));
+    }
+
+    const catalogFont = findLoyaltyCardFont(getTextFontKey(element));
+    if (catalogFont) return withCurrentFontWeight(catalogFont.weights, currentWeight, catalogFont.weights.includes(currentWeight));
+    return withCurrentFontWeight(fontWeights, currentWeight);
+  };
+
+  const getAvailableTextStyles = (element: Extract<LoyaltyCardElement, { type: "text" }>): Array<"normal" | "italic"> => {
+    const currentStyle = getTextFontStyle(element);
+    if (element.fontSource === "customUrl") {
+      const group = findUploadedFontGroupForElement(element);
+      const selectedFontExists = group?.fonts.some((font) => font.id === element.fontKey);
+      if (!group || !selectedFontExists) return [currentStyle];
+      const styles: Array<"normal" | "italic"> = group.fonts.map((font) => font.fontStyle === "italic" ? "italic" : "normal");
+      return withCurrentFontStyle(styles, currentStyle, styles.includes(currentStyle));
+    }
+
+    const catalogFont = findLoyaltyCardFont(getTextFontKey(element));
+    if (catalogFont) return withCurrentFontStyle(catalogFont.styles, currentStyle, catalogFont.styles.includes(currentStyle));
+    return [currentStyle];
+  };
+
+  const getSelectedTextFontWeight = (element: Extract<LoyaltyCardElement, { type: "text" }>, options: number[]) => {
+    const currentWeight = getTextFontWeight(element);
+    return options.includes(currentWeight) ? currentWeight : closestFontWeight(options, currentWeight);
+  };
+
+  const getSelectedTextFontStyle = (element: Extract<LoyaltyCardElement, { type: "text" }>, options: Array<"normal" | "italic">) => {
+    const currentStyle = getTextFontStyle(element);
+    return options.includes(currentStyle) ? currentStyle : options[0] || "normal";
   };
 
   const applyUploadedVariantToTextElement = (element: Extract<LoyaltyCardElement, { type: "text" }>, weight: number, style: "normal" | "italic") => {
@@ -1404,7 +1529,11 @@ export function LoyaltyCardEditor({
       fontKey: font.id,
       fontFamily: font.fontFamily,
       fontUrl,
-      fontWeight: font.fontWeight || weight,
+      fontIsVariable: Boolean(font.isVariable),
+      fontWeightMin: font.fontWeightMin,
+      fontWeightMax: font.fontWeightMax,
+      fontWeightDefault: font.fontWeightDefault,
+      fontWeight: font.isVariable ? clampNumber(weight, font.fontWeightMin || 100, font.fontWeightMax || 900) : font.fontWeight || weight,
       fontStyle: font.fontStyle || style,
     } as LoyaltyCardElement;
   };
@@ -1759,6 +1888,11 @@ export function LoyaltyCardEditor({
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeElements, activeFace, inspectorPane, selectedElementIds, value]);
+
+  const selectedTextWeightOptions = selectedElement?.type === "text" ? getAvailableTextWeights(selectedElement) : fontWeights;
+  const selectedTextWeight = selectedElement?.type === "text" ? getSelectedTextFontWeight(selectedElement, selectedTextWeightOptions) : 700;
+  const selectedTextStyleOptions: Array<"normal" | "italic"> = selectedElement?.type === "text" ? getAvailableTextStyles(selectedElement) : ["normal"];
+  const selectedTextStyle: "normal" | "italic" = selectedElement?.type === "text" ? getSelectedTextFontStyle(selectedElement, selectedTextStyleOptions) : "normal";
 
   return (
     <div className={`loyalty-studio-page loyalty-studio-page--theme-${editorTheme}`}>
@@ -2120,8 +2254,8 @@ export function LoyaltyCardEditor({
                           </button>
                         </div>
                         <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(getTextFontWeight(selectedElement))} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, Number(event.target.value), getTextFontStyle(element)) : element)}>{fontWeights.map((weight) => <option key={weight} value={String(weight)}>{weight}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={getTextFontStyle(selectedElement)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, getTextFontWeight(element), event.target.value as "normal" | "italic") : element)}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
+                          <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(selectedTextWeight)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, Number(event.target.value), selectedTextStyle) : element)}>{selectedTextWeightOptions.map((weight) => <option key={weight} value={String(weight)}>{formatFontWeightOption(weight)}</option>)}</select></label>
+                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={selectedTextStyle} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, selectedTextWeight, event.target.value as "normal" | "italic") : element)}>{selectedTextStyleOptions.map((style) => <option key={style} value={style}>{formatFontStyleOption(style)}</option>)}</select></label>
                           <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Font size" /><input type="number" value={selectedElement.fontSize} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontSize: clampNumber(Number(event.target.value), 1, 220) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={TextIcon} label="Line height" /><input type="number" step="0.05" value={selectedElement.lineHeight} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, lineHeight: clampNumber(Number(event.target.value), 0.7, 2.5) } : element)} /></label>
                           <label className="field field--icon"><IconLabel icon={LetterSpacingIcon} label="Letter spacing" /><input type="number" value={selectedElement.letterSpacing || 0} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, letterSpacing: clampNumber(Number(event.target.value), -20, 80) } : element)} /></label>

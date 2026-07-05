@@ -87,6 +87,10 @@ export type LoyaltyCardTextElement = LoyaltyCardElementBase & {
   fontFamily: string;
   fontUrl?: string;
   fontStyle?: LoyaltyCardFontStyle;
+  fontIsVariable?: boolean;
+  fontWeightMin?: number;
+  fontWeightMax?: number;
+  fontWeightDefault?: number;
   fontSize: number;
   fontWeight: number;
   lineHeight: number;

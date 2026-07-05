@@ -90,7 +90,7 @@ function getTextFont(element: Extract<LoyaltyCardElement, { type: "text" }>) {
   const source = element.fontSource || legacy?.source || "catalog";
   const catalogFont = findLoyaltyCardFont(key) || findLoyaltyCardFont(family);
   const fallback = fallbackByCategory[catalogFont?.category || "sans"] || "sans-serif";
-  return { family, key, source, fontUrl: element.fontUrl || "", fallback };
+  return { family, key, source, fontUrl: element.fontUrl || "", fallback, isVariable: Boolean(element.fontIsVariable), weightMin: element.fontWeightMin || 100, weightMax: element.fontWeightMax || 900, style: element.fontStyle || "normal", weight: element.fontWeight || 400 };
 }
 
 function useLoyaltyCardFonts(elements: LoyaltyCardElement[]) {
@@ -104,7 +104,8 @@ function useLoyaltyCardFonts(elements: LoyaltyCardElement[]) {
       if (font.source === "customUrl" && font.fontUrl && !loadedFontKeys.has(`custom:${font.key}:${font.fontUrl}`)) {
         const style = document.createElement("style");
         style.setAttribute("data-spotlyst-font", font.key);
-        style.textContent = `@font-face{font-family:${cssString(font.family)};src:url(${cssString(font.fontUrl)});font-display:swap;}`;
+        const weightDescriptor = font.isVariable ? `${font.weightMin} ${font.weightMax}` : String(font.weight);
+        style.textContent = `@font-face{font-family:${cssString(font.family)};src:url(${cssString(font.fontUrl)});font-style:${font.style};font-weight:${weightDescriptor};font-display:swap;}`;
         document.head.appendChild(style);
         loadedFontKeys.add(`custom:${font.key}:${font.fontUrl}`);
         return;
