@@ -1,6 +1,6 @@
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { resolveLoyaltyCardToken, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardStampSlot, type LoyaltyCardTokens } from "../schema.js";
 import { resolveFittedStampGridLayout } from "../stampGridLayout.js";
 
@@ -14,6 +14,12 @@ type LoyaltyCardDesignCanvasProps = {
   onBeginInteraction?: () => void;
   onChangeElement: (elementId: string, nextElement: LoyaltyCardElement, options?: { recordHistory?: boolean }) => void;
   onChangeElements: (nextElements: LoyaltyCardElement[], options?: { recordHistory?: boolean }) => void;
+  /** Fixed card width in pixels (used for zoom). Defaults to filling the container. */
+  cardWidth?: number;
+  /** Small label drawn above the selected element, such as the card field it shows. */
+  renderSelectionTag?: (element: LoyaltyCardElement) => ReactNode;
+  /** Changing this replays the stamp animations. */
+  replayKey?: number;
 };
 
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -408,6 +414,9 @@ export function LoyaltyCardDesignCanvas({
   onBeginInteraction,
   onChangeElement,
   onChangeElements,
+  cardWidth,
+  renderSelectionTag,
+  replayKey = 0,
 }: LoyaltyCardDesignCanvasProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const stampContextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -729,6 +738,19 @@ export function LoyaltyCardDesignCanvas({
     window.addEventListener("pointercancel", handleEnd);
   };
 
+  // Drawn in card coordinates above the layer's rotated bounds, so it stays on top whatever the rotation.
+  const renderSelectionTagFor = (element: LoyaltyCardElement) => {
+    if (!renderSelectionTag || element.id !== selectedElement?.id) return null;
+    const tag = renderSelectionTag(element);
+    if (tag === null || tag === undefined || tag === false) return null;
+    const angle = ((element.rotation || 0) * Math.PI) / 180;
+    const halfWidth = (element.width * Math.abs(Math.cos(angle)) + element.height * Math.abs(Math.sin(angle))) / 2;
+    const halfHeight = (element.width * Math.abs(Math.sin(angle)) + element.height * Math.abs(Math.cos(angle))) / 2;
+    const left = (element.x + element.width / 2 - halfWidth) * scale;
+    const top = (element.y + element.height / 2 - halfHeight) * scale;
+    return <span className="loyalty-design-canvas__tag" style={{ left, top }}>{tag}</span>;
+  };
+
   const renderHandles = (element: LoyaltyCardElement) => {
     if (element.id !== selectedElement?.id) return null;
     const directions: ResizeDirection[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -975,11 +997,11 @@ export function LoyaltyCardDesignCanvas({
 
   return (
     <div className="loyalty-design-canvas-wrap" onPointerDown={() => onSelectElement("")}>
-      <div ref={canvasRef} className="loyalty-design-canvas" onPointerDown={(event) => {
+      <div ref={canvasRef} className="loyalty-design-canvas" style={cardWidth ? { width: cardWidth, maxWidth: "none" } : undefined} onPointerDown={(event) => {
         event.stopPropagation();
         onSelectElement("");
       }}>
-        <LoyaltyCardRenderer schema={schema} face={face} tokens={tokens} className="loyalty-design-canvas__surface" animateStampGridLayout />
+        <LoyaltyCardRenderer key={replayKey} schema={schema} face={face} tokens={tokens} className="loyalty-design-canvas__surface" animateStampGridLayout />
         <div className="loyalty-design-canvas__overlay" aria-label="Card editor overlay">
           {snapGuides.x !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--vertical" style={{ left: snapGuides.x * scale }} /> : null}
           {snapGuides.y !== undefined ? <span className="loyalty-design-canvas__snap-guide loyalty-design-canvas__snap-guide--horizontal" style={{ top: snapGuides.y * scale }} /> : null}
@@ -998,6 +1020,7 @@ export function LoyaltyCardDesignCanvas({
               {renderStampGridInlineEditor(element)}
             </div>
           ))}
+          {visibleElements.filter((element) => element.id === selectedElement?.id).map((element) => <Fragment key={`tag-${element.id}`}>{renderSelectionTagFor(element)}</Fragment>)}
           {selectedGroups.map(renderGroupOverlay)}
         </div>
       </div>

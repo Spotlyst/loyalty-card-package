@@ -1,128 +1,159 @@
-import { findLoyaltyCardFont, getLoyaltyCardFontCategoryLabel, legacyLoyaltyCardFontMap, loyaltyCardFontCatalog } from "../fonts.js";
-import type { LoyaltyCardFontCatalogItem } from "../fonts.js";
-import { normalizeLoyaltyCardLayerOrder, normalizeLoyaltyCardPreset } from "../normalize.js";
-import { LOYALTY_CARD_CANVAS_HEIGHT, LOYALTY_CARD_CANVAS_WIDTH, LOYALTY_CARD_FACE_KEYS } from "../schema.js";
-import { resolveStampGridColumns as resolveStampColumns, resolveStampGridCount as resolveStampCount, resolveStampGridRows, resolveStampGridScale as resolveStampScale } from "../stampGridLayout.js";
 import {
+  Add01Icon,
+  AlignBottomIcon,
+  AlignHorizontalCenterIcon,
   AlignLeftIcon,
+  AlignRightIcon,
+  AlignTopIcon,
   AlignVerticalCenterIcon,
-  BorderFullIcon,
-  CalendarCheckIcon,
-  CaseSensitiveIcon,
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  BracesIcon,
   CircleIcon,
-  Clock01Icon,
-  ColorPickerIcon,
-  ColorsIcon,
-  ContrastIcon,
-  BlurIcon,
-  DropletsIcon,
-  FilterResetIcon,
-  GridTableIcon,
-  ImageAdd01Icon,
-  LetterSpacingIcon,
-  Link01Icon,
+  Copy01Icon,
+  Delete02Icon,
+  DistributeHorizontalCenterIcon,
+  DistributeVerticalCenterIcon,
+  DragDropVerticalIcon,
+  GiftIcon,
+  Image01Icon,
+  InformationCircleIcon,
+  LayerBringForwardIcon,
+  LayerBringToFrontIcon,
+  LayerSendBackwardIcon,
+  LayerSendToBackIcon,
+  Layers01Icon,
+  LockKeyIcon,
+  MagnetIcon,
+  MinusSignIcon,
   Moon02Icon,
-  Move01Icon,
-  RadiusIcon,
-  Resize01Icon,
-  Rotate01Icon,
-  ShapeCollectionIcon,
-  SparklesIcon,
-  SquareLock01Icon,
+  MoreHorizontalIcon,
+  Note01Icon,
+  PlayIcon,
+  PlusSignIcon,
+  Redo02Icon,
+  ShapesIcon,
+  SquareIcon,
   SquareUnlock01Icon,
-  StrokeCenterIcon,
-  Sun02Icon,
-  TextBoldIcon,
-  TextColorIcon,
+  StampIcon,
+  StarSquareIcon,
+  Store01Icon,
+  Sun03Icon,
   TextFontIcon,
-  TextIcon,
-  Timer01Icon,
-  TypeCursorIcon,
+  Ticket01Icon,
+  Undo02Icon,
+  ViewIcon,
+  ViewOffSlashIcon,
+  CenterFocusIcon,
 } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import { AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlignVerticalSpaceBetween, Archive, ArrowDown, ArrowLeft, ArrowUp, BringToFront, Circle, Crosshair, Eye, EyeOff, GripVertical, Grid3X3, Image, Link, Lock, Minus, RotateCcw, SendToBack, Shapes, Square, Trash2, Type, Unlock, UploadCloud } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { normalizeLoyaltyCardLayerOrder, normalizeLoyaltyCardPreset } from "../normalize.js";
+import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
+import { LOYALTY_CARD_FACE_KEYS, resolveLoyaltyCardToken } from "../schema.js";
 import type {
   LoyaltyCardBackground,
-  LoyaltyCardDesignSchema,
   LoyaltyCardElement,
   LoyaltyCardFaceKey,
   LoyaltyCardPresetRecord,
   LoyaltyCardStampGridElement,
+  LoyaltyCardTextElement,
   LoyaltyCardTokens,
 } from "../schema.js";
+import { resolveStampGridCount } from "../stampGridLayout.js";
+import { LoyaltyCardDesignCanvas } from "./LoyaltyCardDesignCanvas.js";
+import {
+  alignElements,
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  centerElementsOnCanvas,
+  clampNumber,
+  collectFaceColors,
+  contrastingTextColor,
+  describeRecordChange,
+  createElement,
+  distributeElements,
+  elementLabel,
+  elementsMoved,
+  elementSubtitle,
+  FACE_LABELS,
+  FACE_SIDE_LABELS,
+  formatRelativeTime,
+  HISTORY_LIMIT,
+  lockedLayerOrderChanged,
+  MAX_FILLED_STAMP_PRESETS,
+  moveLayer,
+  moveLayerToEdge,
+  parseColor,
+  reorderLayer,
+  singleTokenKey,
+  textFieldTag,
+  updateElement,
+  withFace,
+} from "./editorUtils.js";
+import type { MediaResult } from "./editorUtils.js";
+import {
+  applyCatalogFontToText,
+  applyTextVariant,
+  applyUploadedFontToText,
+  chooseUploadedFontVariant,
+  FontPickerPanel,
+  FontUploadDialog,
+  getAvailableTextStyles,
+  getAvailableTextWeights,
+  getUploadedFontUrl,
+  groupUploadedFonts,
+  selectedTextStyle,
+  selectedTextWeight,
+  UploadedFontsList,
+} from "./fontsUi.js";
+import type { LoyaltyCardEditorUploadedFont, UploadFontHandler } from "./fontsUi.js";
+import {
+  CardSettingsBody,
+  cardSettingsHeader,
+  categoryLabel,
+  ImageInspectorBody,
+  imageHeader,
+  InspectorHeader,
+  LineInspectorBody,
+  lineHeader,
+  LockedNotice,
+  MultiSelectionBody,
+  OpacitySection,
+  PositionSection,
+  ShapeInspectorBody,
+  shapeHeader,
+  StampGridInspectorBody,
+  stampGridHeader,
+  StampGridTabs,
+  TextInspectorBody,
+  textHeader,
+} from "./inspectors.js";
+import type { BackgroundUpdate, ImportImageHandler, LoyaltyCardEditorImageContext, SampleData, StampGridTab, StampPreviewState, UploadImageHandler } from "./inspectors.js";
+import { LibraryFontsSection, LibraryPanel } from "./libraryUi.js";
+import type { LibraryKind, LoyaltyCardEditorLibraryAsset, StampTarget, UploadLibraryAssetHandler } from "./libraryUi.js";
+import { Icon, IconButton, Menu, Modal, Segmented, Switch, Tile, cx } from "./ui.js";
+import type { IconType, MenuItem } from "./ui.js";
 
-const CANVAS_WIDTH = LOYALTY_CARD_CANVAS_WIDTH;
-const CANVAS_HEIGHT = LOYALTY_CARD_CANVAS_HEIGHT;
+export type { LoyaltyCardEditorImageContext } from "./inspectors.js";
+export type { LoyaltyCardEditorLibraryAsset } from "./libraryUi.js";
+export type { LoyaltyCardEditorUploadedFont } from "./fontsUi.js";
 
-const textTokens = ["{{venueName}}", "{{tierName}}", "{{rewardTitle}}", "{{rewardDescription}}", "{{stampsCollected}}", "{{stampsRequired}}"];
-const fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
-const cssFontWeightMin = 1;
-const cssFontWeightMax = 1000;
-const fontCategories = ["sans", "serif", "display", "script", "handwritten", "condensed", "retro", "luxury", "poster", "multilingual"] as const;
-const HISTORY_LIMIT = 80;
-const EDITOR_THEME_STORAGE_KEY = "spotlyst.loyaltyCardEditor.theme";
-const MAX_FILLED_STAMP_PRESETS = 5;
-type EditorChromeTheme = "light" | "dark";
-const FACE_LABELS: Record<LoyaltyCardFaceKey, string> = {
-  front: "Front",
-  back: "Back",
-  reward: "Reward Unlock",
-};
-const imageFilterPresets = {
-  none: { label: "None", filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
-  monochrome: { label: "Mono", filterBrightness: 1, filterContrast: 1, filterSaturation: 0, filterHue: 0, filterSepia: 0, filterGrayscale: 1, filterInvert: 0, filterBlur: 0 },
-  invert: { label: "Invert", filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 1, filterBlur: 0 },
-  warm: { label: "Warm", filterBrightness: 1, filterContrast: 1, filterSaturation: 1.12, filterHue: 8, filterSepia: 0.12, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
-  cool: { label: "Cool", filterBrightness: 1, filterContrast: 1, filterSaturation: 1.08, filterHue: -12, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
-  vintage: { label: "Vintage", filterBrightness: 1, filterContrast: 0.92, filterSaturation: 0.72, filterHue: 0, filterSepia: 0.35, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
-  dramatic: { label: "Drama", filterBrightness: 0.92, filterContrast: 1.28, filterSaturation: 1.12, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0 },
-} as const;
-type ImageFilterPresetKey = keyof typeof imageFilterPresets;
-const loadedPreviewFontKeys = new Set<string>();
-let previewFontPreconnectLoaded = false;
+export type LoyaltyCardEditorMediaResult = MediaResult;
 
 export type LoyaltyCardEditorMetaContext = {
   record: LoyaltyCardPresetRecord;
   update: (updater: (record: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord) => void;
 };
 
-export type LoyaltyCardEditorImageContext = {
-  face: LoyaltyCardFaceKey;
-  field: "background.imageUrl" | "asset.imageUrl" | "stampGrid.emptyImageUrl" | "stampGrid.filledImageUrl";
-  elementId?: string;
-  currentUrl: string;
-};
-
-export type LoyaltyCardEditorMediaResult = string | { url?: string; cdnUrl?: string };
-
-export type LoyaltyCardEditorLibraryAsset = {
+/** An extra item for the top bar's “…” menu. */
+export type LoyaltyCardEditorMenuAction = {
   id: string;
-  name: string;
-  category: string;
-  status?: "active" | "hidden" | "archived";
-  cdnUrl: string;
-  width?: number;
-  height?: number;
-  tags?: string[];
-};
-
-export type LoyaltyCardEditorUploadedFont = {
-  id: string;
-  name: string;
-  fontFamily: string;
-  fontUrl?: string;
-  cdnUrl?: string;
-  fontWeight?: number;
-  fontStyle?: "normal" | "italic";
-  isVariable?: boolean;
-  fontWeightMin?: number;
-  fontWeightMax?: number;
-  fontWeightDefault?: number;
-  variationAxes?: Array<{ tag: string; name?: string; min: number; max: number; default?: number }>;
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  icon?: IconType;
 };
 
 export type LoyaltyCardEditorProps = {
@@ -131,8 +162,11 @@ export type LoyaltyCardEditorProps = {
   title?: string;
   tokens: LoyaltyCardTokens;
   faces?: LoyaltyCardFaceKey[];
+  /** Extra buttons for the right side of the top bar. */
   actions?: ReactNode;
+  /** Extra fields shown in Card settings (when nothing is selected). */
   renderMeta?: (context: LoyaltyCardEditorMetaContext) => ReactNode;
+  /** Called by Ctrl/Cmd + S. */
   onSave?: () => void;
   toast?: string | null;
   error?: string | null;
@@ -147,126 +181,33 @@ export type LoyaltyCardEditorProps = {
   onUploadFont?: (file: File, meta: { name: string; fontFamily: string; fontWeight: number; fontStyle: "normal" | "italic" }) => Promise<LoyaltyCardEditorUploadedFont>;
   onArchiveFont?: (fontId: string) => Promise<void>;
   onDeleteFont?: (fontId: string) => Promise<void>;
+  /** Shows the round back button in the top bar. */
+  onBack?: () => void;
+  backLabel?: string;
+  /** Shows a “Save draft” button in the top bar. */
+  onSaveDraft?: () => void;
+  saveDraftLabel?: string;
+  /** Shows the dark “Publish” button in the top bar. */
+  onPublish?: () => void;
+  publishLabel?: string;
+  isSaving?: boolean;
+  /** When the record was last saved, for “Changes saved 2 min ago”. */
+  savedAt?: string | number | Date | null;
+  hasUnsavedChanges?: boolean;
+  /** Extra items for the top bar's “…” menu, such as duplicate and archive. */
+  menuActions?: LoyaltyCardEditorMenuAction[];
+  /** Shows the preset name, category, note for venues and slug in Card settings. */
+  showPresetDetails?: boolean;
 };
 
-function IconLabel({ icon, label }: { icon: IconSvgElement; label: string }) {
-  return (
-    <span className="loyalty-icon-label" title={label} aria-label={label}>
-      <HugeiconsIcon icon={icon} size={15} strokeWidth={1.8} aria-hidden="true" />
-      <span className="sr-only">{label}</span>
-    </span>
-  );
-}
+type EditorChromeTheme = "light" | "dark";
+type LeftTab = "add" | "layers" | "library";
 
-function StampLayoutControl({ element, onChange }: { element: LoyaltyCardStampGridElement; onChange: (next: Partial<LoyaltyCardStampGridElement>) => void }) {
-  const count = resolveStampCount(element);
-  const previewFilledCount = resolvePreviewFilledCount(element);
-  const previewFilledMode = element.previewFilledMode === "manual" ? "manual" : "auto";
-  const stampScale = Math.round(resolveStampScale(element));
-  const gap = Math.round(element.gap || 0);
-  const stampRows = resolveStampGridRows(element);
-  const verticalAlign = element.verticalAlign || "top";
-  const rowAlignOptions = ["left", "center", "right"] as const;
-  const verticalOptions = ["top", "center", "bottom"] as const;
-
-  const applyChanges = (next: Partial<LoyaltyCardStampGridElement>) => onChange(next);
-  const applyRows = (nextRows: Array<{ count: number; align: "left" | "center" | "right" }>) => {
-    const sanitizedRows = nextRows.map((row) => ({ count: clampNumber(Math.floor(Number(row.count) || 0), 0, 12), align: row.align || "center" })).filter((row) => row.count > 0).slice(0, 20);
-    const nextCount = clampNumber(sanitizedRows.reduce((sum, row) => sum + row.count, 0), 1, 100);
-    applyChanges({
-      stampRows: sanitizedRows,
-      count: nextCount,
-      columns: Math.max(1, ...sanitizedRows.map((row) => row.count)),
-      previewFilledCount: previewFilledMode === "manual" ? clampNumber(previewFilledCount, 0, nextCount) : undefined,
-      countToken: "",
-      filledToken: "",
-    });
-  };
-
-  const addRow = (index: number) => applyRows([...stampRows.slice(0, index), { count: Math.min(Math.max(1, resolveStampColumns(element)), 12), align: "center" }, ...stampRows.slice(index)]);
-  const addStampToRow = (rowIndex: number) => {
-    if (count >= 100) return;
-    applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, count: Math.min(12, row.count + 1) } : row));
-  };
-  const removeStampFromRow = (rowIndex: number) => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, count: row.count - 1 } : row));
-  const alignRow = (rowIndex: number, align: "left" | "center" | "right") => applyRows(stampRows.map((row, index) => index === rowIndex ? { ...row, align } : row));
-  const stepFilled = (delta: number) => applyChanges({ previewFilledMode: "manual", previewFilledCount: clampNumber(previewFilledCount + delta, 0, count) });
-  const useAutoFilled = () => applyChanges({ previewFilledMode: "auto", previewFilledCount: undefined });
-  const stepSize = (delta: number) => applyChanges({ stampSize: clampNumber(stampScale + delta, 16, 220) });
-  const stepGap = (delta: number) => applyChanges({ gap: clampNumber(gap + delta, 0, 80) });
-
-  return (
-    <div className="loyalty-stamp-layout-control">
-      <div className="loyalty-stamp-builder" aria-label="Stamp layout builder">
-        <button type="button" className="loyalty-stamp-builder__row-add" onClick={() => addRow(0)}>+ Add row above</button>
-        <div className="loyalty-stamp-builder__rows">
-          {stampRows.map((row, rowIndex) => (
-            <div key={rowIndex} className="loyalty-stamp-builder__row">
-              <button type="button" className="loyalty-stamp-builder__edge" onClick={() => addStampToRow(rowIndex)} aria-label={`Add stamp to row ${rowIndex + 1}`}>+</button>
-              <div className={`loyalty-stamp-builder__cells loyalty-stamp-builder__cells--${row.align}`}>
-                {Array.from({ length: row.count }).map((_, stampIndex) => {
-                  const absoluteIndex = stampRows.slice(0, rowIndex).reduce((sum, item) => sum + item.count, 0) + stampIndex;
-                  return <button key={stampIndex} type="button" className={absoluteIndex < previewFilledCount ? "loyalty-stamp-builder__stamp loyalty-stamp-builder__stamp--filled" : "loyalty-stamp-builder__stamp"} onClick={() => removeStampFromRow(rowIndex)} aria-label={`Remove stamp ${absoluteIndex + 1}`} />;
-                })}
-              </div>
-              <button type="button" className="loyalty-stamp-builder__edge" onClick={() => addStampToRow(rowIndex)} aria-label={`Add stamp to row ${rowIndex + 1}`}>+</button>
-              <div className="loyalty-stamp-builder__align" aria-label={`Align row ${rowIndex + 1}`}>
-                {rowAlignOptions.map((align) => <button key={align} type="button" className={row.align === align ? "loyalty-stamp-builder__align-button loyalty-stamp-builder__align-button--active" : "loyalty-stamp-builder__align-button"} aria-label={`Align row ${align}`} aria-pressed={row.align === align} onClick={() => alignRow(rowIndex, align)}>{align[0].toUpperCase()}</button>)}
-              </div>
-            </div>
-          ))}
-        </div>
-        <button type="button" className="loyalty-stamp-builder__row-add" onClick={() => addRow(stampRows.length)}>+ Add row below</button>
-      </div>
-      <div className="loyalty-stamp-layout-control__tools">
-        <div className="loyalty-stamp-stepper">
-          <span>Total slots</span>
-          <div><button type="button" disabled>-</button><strong>{count}</strong><button type="button" disabled>+</button></div>
-        </div>
-        <div className="loyalty-stamp-stepper">
-          <span>{previewFilledMode === "auto" ? "Filled preview auto" : "Filled preview"}</span>
-          <div><button type="button" onClick={() => stepFilled(-1)}>-</button><strong>{previewFilledCount}</strong><button type="button" onClick={() => stepFilled(1)}>+</button><button type="button" onClick={useAutoFilled} disabled={previewFilledMode === "auto"}>Auto</button></div>
-        </div>
-        <div className="loyalty-stamp-stepper">
-          <span>Stamp scale</span>
-          <div><button type="button" onClick={() => stepSize(-4)}>-</button><strong>{stampScale}</strong><button type="button" onClick={() => stepSize(4)}>+</button></div>
-        </div>
-        <div className="loyalty-stamp-stepper">
-          <span>Gap scale</span>
-          <div><button type="button" onClick={() => stepGap(-2)}>-</button><strong>{gap}</strong><button type="button" onClick={() => stepGap(2)}>+</button></div>
-        </div>
-      </div>
-      <div className="loyalty-stamp-align-grid" aria-label="Stamp grid alignment">
-        {verticalOptions.map((vertical) => {
-          const active = verticalAlign === vertical;
-          return <button key={vertical} type="button" className={active ? "loyalty-stamp-align-grid__button loyalty-stamp-align-grid__button--active" : "loyalty-stamp-align-grid__button"} aria-label={`Align grid ${vertical}`} aria-pressed={active} onClick={() => onChange({ verticalAlign: vertical })}><span /></button>;
-        })}
-      </div>
-    </div>
-  );
-}
-
-function InspectorSection({ icon, label }: { icon: IconSvgElement; label: string }) {
-  return (
-    <div className="loyalty-inspector-section-title">
-      <HugeiconsIcon icon={icon} size={14} strokeWidth={1.8} aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function RatioLockButton({ locked, onToggle }: { locked: boolean; onToggle: () => void }) {
-  return (
-    <button className={locked ? "loyalty-lock-toggle loyalty-lock-toggle--active" : "loyalty-lock-toggle"} type="button" aria-pressed={locked} onClick={onToggle}>
-      <HugeiconsIcon icon={locked ? SquareLock01Icon : SquareUnlock01Icon} size={15} strokeWidth={1.8} aria-hidden="true" />
-      <span>{locked ? "Lock ratio" : "Free resize"}</span>
-    </button>
-  );
-}
-
-function resolveMediaResultUrl(result: LoyaltyCardEditorMediaResult) {
-  return typeof result === "string" ? result : result.cdnUrl || result.url || "";
-}
+const EDITOR_THEME_STORAGE_KEY = "spotlyst.loyaltyCardEditor.theme";
+const BASE_CARD_WIDTH = 640;
+const HISTORY_COALESCE_MS = 600;
+const ZOOM_STEPS = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getStoredEditorTheme(): EditorChromeTheme {
   if (typeof window === "undefined") return "light";
@@ -277,926 +218,91 @@ function getStoredEditorTheme(): EditorChromeTheme {
   }
 }
 
-function ImageUrlField({ label, value, context, onChange, onUploadImage, onImportImageUrl }: { label: string; value: string; context: LoyaltyCardEditorImageContext; onChange: (value: string) => void; onUploadImage?: LoyaltyCardEditorProps["onUploadImage"]; onImportImageUrl?: LoyaltyCardEditorProps["onImportImageUrl"] }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const hasMediaActions = Boolean(onUploadImage || onImportImageUrl);
+const EDITOR_FONT_LINK_ID = "lce-editor-fonts";
 
-  const applyResult = (result: LoyaltyCardEditorMediaResult) => {
-    const nextUrl = resolveMediaResultUrl(result);
-    if (nextUrl) onChange(nextUrl);
-  };
-
-  const handleUpload = async (file: File | undefined) => {
-    if (!file || !onUploadImage) return;
-    setIsBusy(true);
-    setError(null);
-    try {
-      applyResult(await onUploadImage(file, { ...context, currentUrl: value }));
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed");
-    } finally {
-      setIsBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  const handleImport = async () => {
-    const sourceUrl = value.trim();
-    if (!sourceUrl || !onImportImageUrl) return;
-    setIsBusy(true);
-    setError(null);
-    try {
-      applyResult(await onImportImageUrl(sourceUrl, { ...context, currentUrl: value }));
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "Image import failed");
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  return (
-    <div className="loyalty-image-url-field">
-      <label className="field field--icon"><IconLabel icon={Link01Icon} label={label} /><input type="url" placeholder="https://..." value={value} onChange={(event) => onChange(event.target.value)} /></label>
-      {hasMediaActions ? (
-        <div className="loyalty-image-url-actions">
-          {onUploadImage ? (
-            <>
-              <input ref={inputRef} className="loyalty-image-url-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => handleUpload(event.target.files?.[0])} />
-              <button type="button" disabled={isBusy} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />Upload</button>
-            </>
-          ) : null}
-          {onImportImageUrl ? <button type="button" disabled={isBusy || !value.trim()} onClick={handleImport}><Link size={14} />{isBusy ? "Working" : "Import URL"}</button> : null}
-        </div>
-      ) : null}
-      {error ? <small className="loyalty-image-url-error">{error}</small> : null}
-    </div>
-  );
-}
-
-function getTextFontKey(element: Extract<LoyaltyCardElement, { type: "text" }>) {
-  return element.fontKey || legacyLoyaltyCardFontMap[element.fontFamily]?.key || findLoyaltyCardFont(element.fontFamily)?.key || "outfit";
-}
-
-function getTextFontWeight(element: Extract<LoyaltyCardElement, { type: "text" }>) {
-  const weight = Math.round(Number(element.fontWeight));
-  return Number.isFinite(weight) ? clampNumber(weight, cssFontWeightMin, cssFontWeightMax) : 700;
-}
-
-function withCurrentFontWeight(options: number[], weight: number, includeCurrent = true) {
-  const sanitized = options.map((option) => Math.round(option)).filter((option) => option >= cssFontWeightMin && option <= cssFontWeightMax);
-  const next = includeCurrent && !sanitized.includes(weight) ? [...sanitized, weight] : sanitized;
-  return Array.from(new Set(next)).sort((a, b) => a - b);
-}
-
-function getVariableFontWeightOptions(min = 100, max = 900, currentWeight = 400) {
-  const safeMin = clampNumber(Math.round(Number(min)), cssFontWeightMin, cssFontWeightMax);
-  const safeMax = clampNumber(Math.round(Number(max)), safeMin, cssFontWeightMax);
-  const firstStep = Math.ceil(safeMin / 100) * 100;
-  const options: number[] = [];
-  if (safeMin !== firstStep) options.push(safeMin);
-  for (let weight = firstStep; weight <= safeMax; weight += 100) options.push(weight);
-  if (!options.includes(safeMax)) options.push(safeMax);
-  return withCurrentFontWeight(options, currentWeight, currentWeight >= safeMin && currentWeight <= safeMax);
-}
-
-function formatFontWeightOption(weight: number) {
-  const labels: Record<number, string> = {
-    100: "Thin",
-    200: "Extra Light",
-    300: "Light",
-    400: "Regular",
-    500: "Medium",
-    600: "Semibold",
-    700: "Bold",
-    800: "Extra Bold",
-    900: "Black",
-    1000: "Extra Black",
-  };
-  return labels[weight] ? `${weight} ${labels[weight]}` : String(weight);
-}
-
-function closestFontWeight(options: number[], weight: number) {
-  return options.reduce((nearest, option) => (Math.abs(option - weight) < Math.abs(nearest - weight) ? option : nearest), options[0] || weight);
-}
-
-function getTextFontStyle(element: Extract<LoyaltyCardElement, { type: "text" }>) {
-  return element.fontStyle === "italic" ? "italic" : "normal";
-}
-
-function withCurrentFontStyle(options: Array<"normal" | "italic">, style: "normal" | "italic", includeCurrent = true): Array<"normal" | "italic"> {
-  const sanitized = options.filter((option): option is "normal" | "italic" => option === "normal" || option === "italic");
-  const next = includeCurrent && !sanitized.includes(style) ? [...sanitized, style] : sanitized;
-  return Array.from(new Set(next.length ? next : ["normal" as const]));
-}
-
-function formatFontStyleOption(style: "normal" | "italic") {
-  return style === "italic" ? "Italic" : "Normal";
-}
-
-function getFontPreviewWeight(font: LoyaltyCardFontCatalogItem) {
-  return font.weights.includes(400)
-    ? 400
-    : font.weights.reduce((nearest, weight) => (Math.abs(weight - 400) < Math.abs(nearest - 400) ? weight : nearest), font.weights[0] || 400);
-}
-
-function getGoogleFontCssUrl(font: LoyaltyCardFontCatalogItem) {
-  const family = font.family.trim().replace(/\s+/g, "+");
-  return `https://fonts.googleapis.com/css2?family=${family}:wght@${getFontPreviewWeight(font)}&display=swap`;
-}
-
-function ensurePreviewFontPreconnect() {
-  if (previewFontPreconnectLoaded || typeof document === "undefined") return;
-  previewFontPreconnectLoaded = true;
-  for (const href of ["https://fonts.googleapis.com", "https://fonts.gstatic.com"]) {
-    if (document.querySelector(`link[href="${href}"]`)) continue;
-    const link = document.createElement("link");
-    link.rel = "preconnect";
-    link.href = href;
-    if (href.includes("gstatic")) link.crossOrigin = "anonymous";
-    document.head.appendChild(link);
-  }
-}
-
-function loadPreviewFont(font: LoyaltyCardFontCatalogItem) {
-  if (font.source !== "google" || typeof document === "undefined" || loadedPreviewFontKeys.has(font.key)) return;
-  ensurePreviewFontPreconnect();
-  loadedPreviewFontKeys.add(font.key);
-  const linkId = `loyalty-font-preview-${font.key}`;
-  if (document.getElementById(linkId)) return;
+/** Loads the editor's own font (and the heading sample's font) once, so every host gets the same look. */
+function ensureEditorFonts() {
+  if (typeof document === "undefined" || document.getElementById(EDITOR_FONT_LINK_ID)) return;
   const link = document.createElement("link");
-  link.id = linkId;
+  link.id = EDITOR_FONT_LINK_ID;
   link.rel = "stylesheet";
-  link.href = getGoogleFontCssUrl(font);
+  link.href = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap";
   document.head.appendChild(link);
 }
 
-function FontBrowserItem({ font, isActive, onSelect }: { font: LoyaltyCardFontCatalogItem; isActive: boolean; onSelect: (fontKey: string) => void }) {
-  const itemRef = useRef<HTMLButtonElement | null>(null);
+const recordKeys = new WeakMap<LoyaltyCardPresetRecord, string>();
 
-  useEffect(() => {
-    const element = itemRef.current;
-    if (!element || typeof IntersectionObserver === "undefined") {
-      loadPreviewFont(font);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        loadPreviewFont(font);
-        observer.disconnect();
-      }
-    }, { rootMargin: "180px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [font]);
-
-  useEffect(() => {
-    if (isActive) loadPreviewFont(font);
-  }, [font, isActive]);
-
-  return (
-    <button ref={itemRef} key={font.key} type="button" className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active" : "loyalty-font-browser-item"} onClick={() => onSelect(font.key)}>
-      <strong style={{ fontFamily: `"${font.family}", sans-serif`, fontWeight: getFontPreviewWeight(font) }}>{font.family}</strong>
-    </button>
-  );
-}
-
-function getUploadedFontUrl(font: LoyaltyCardEditorUploadedFont) {
-  return font.fontUrl || font.cdnUrl || "";
-}
-
-function cssString(value: string) {
-  return JSON.stringify(value.replace(/[\u0000-\u001F\u007F]/g, ""));
-}
-
-function loadUploadedFontPreview(font: LoyaltyCardEditorUploadedFont) {
-  const fontUrl = getUploadedFontUrl(font);
-  if (!fontUrl || typeof document === "undefined") return;
-  const key = `uploaded:${font.id}:${fontUrl}`;
-  if (loadedPreviewFontKeys.has(key)) return;
-  loadedPreviewFontKeys.add(key);
-  const style = document.createElement("style");
-  style.setAttribute("data-spotlyst-uploaded-font", font.id);
-  const weightDescriptor = font.isVariable ? `${font.fontWeightMin || 100} ${font.fontWeightMax || 900}` : String(font.fontWeight || 400);
-  style.textContent = `@font-face{font-family:${cssString(font.fontFamily)};src:url(${cssString(fontUrl)});font-style:${font.fontStyle || "normal"};font-weight:${weightDescriptor};font-display:swap;}`;
-  document.head.appendChild(style);
-}
-
-function sortUploadedFontVariants(fonts: LoyaltyCardEditorUploadedFont[]) {
-  return [...fonts].sort((a, b) => (a.fontStyle || "normal").localeCompare(b.fontStyle || "normal") || (a.fontWeight || 400) - (b.fontWeight || 400) || a.fontFamily.localeCompare(b.fontFamily));
-}
-
-function uploadedFontVariantLabel(font: LoyaltyCardEditorUploadedFont) {
-  if (font.isVariable) return `Variable ${font.fontWeightMin || 100}-${font.fontWeightMax || 900}${font.fontStyle === "italic" ? " italic" : ""}`;
-  const weight = font.fontWeight || 400;
-  return `${weight}${font.fontStyle === "italic" ? " italic" : ""}`;
-}
-
-function uploadedFontGroupSummary(fonts: LoyaltyCardEditorUploadedFont[]) {
-  const variants = sortUploadedFontVariants(fonts).map(uploadedFontVariantLabel);
-  if (variants.length <= 4) return variants.join(", ");
-  return `${variants.slice(0, 4).join(", ")} +${variants.length - 4}`;
-}
-
-function UploadedFontBrowserItem({ group, isActive, onSelect, onArchive, onDelete }: { group: UploadedFontGroup; isActive: boolean; onSelect: (group: UploadedFontGroup) => void; onArchive?: (fontId: string) => Promise<void>; onDelete?: (fontId: string) => Promise<void> }) {
-  const [isArchiving, setIsArchiving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const previewFont = sortUploadedFontVariants(group.fonts).find((font) => font.fontWeight === 400 && font.fontStyle !== "italic") || sortUploadedFontVariants(group.fonts)[0];
-
-  useEffect(() => {
-    group.fonts.forEach(loadUploadedFontPreview);
-  }, [group.fonts]);
-
-  const archiveGroup = async () => {
-    if (!onArchive || isArchiving || isDeleting) return;
-    setIsArchiving(true);
-    setActionError(null);
-    try {
-      const results = await Promise.allSettled(group.fonts.map((font) => onArchive(font.id)));
-      const failed = results.filter((result) => result.status === "rejected").length;
-      if (failed > 0) setActionError(`Archived ${group.fonts.length - failed} of ${group.fonts.length} variants. ${failed} failed.`);
-    } finally {
-      setIsArchiving(false);
-    }
-  };
-
-  const deleteGroup = async () => {
-    if (!onDelete || isArchiving || isDeleting) return;
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${group.family} from the font catalog? This removes ${group.fonts.length} uploaded variant${group.fonts.length === 1 ? "" : "s"}. Existing designs that already use the font URL will keep rendering.`)) return;
-    setIsDeleting(true);
-    setActionError(null);
-    try {
-      const results = await Promise.allSettled(group.fonts.map((font) => onDelete(font.id)));
-      const failed = results.filter((result) => result.status === "rejected").length;
-      if (failed > 0) setActionError(`Deleted ${group.fonts.length - failed} of ${group.fonts.length} variants. ${failed} failed.`);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <div className={isActive ? "loyalty-font-browser-item loyalty-font-browser-item--active loyalty-font-browser-item--with-action" : "loyalty-font-browser-item loyalty-font-browser-item--with-action"}>
-      <button type="button" onClick={() => onSelect(group)}>
-        <strong style={{ fontFamily: `"${previewFont?.fontFamily || group.family}", sans-serif`, fontWeight: previewFont?.fontWeight || 400 }}>{group.family}</strong>
-        <small>{group.fonts.length} variant{group.fonts.length === 1 ? "" : "s"} · {uploadedFontGroupSummary(group.fonts)}</small>
-      </button>
-      <div className="loyalty-font-browser-item__actions">
-        {onArchive ? <button type="button" disabled={isArchiving || isDeleting} onClick={archiveGroup}>{isArchiving ? "Archiving" : "Archive"}</button> : null}
-        {onDelete ? <button type="button" className="loyalty-font-browser-item__delete" disabled={isArchiving || isDeleting} onClick={deleteGroup}>{isDeleting ? "Deleting" : "Delete"}</button> : null}
-      </div>
-      {actionError ? <small className="loyalty-font-browser-item__error">{actionError}</small> : null}
-    </div>
-  );
-}
-
-function LibraryAssetCard({ asset, isActive, onSelect, onArchive, onRestore, onDelete }: { asset: LoyaltyCardEditorLibraryAsset; isActive?: boolean; onSelect: (asset: LoyaltyCardEditorLibraryAsset) => void; onArchive?: (assetId: string) => Promise<void>; onRestore?: (assetId: string) => Promise<void>; onDelete?: (assetId: string) => Promise<void> }) {
-  const [isArchiving, setIsArchiving] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const isArchived = asset.status === "archived";
-  return (
-    <div className={["loyalty-asset-card", isActive ? "loyalty-asset-card--active" : "", isArchived ? "loyalty-asset-card--archived" : ""].filter(Boolean).join(" ")}>
-      <button type="button" aria-label={isArchived ? `${asset.name} archived` : `Use ${asset.name}`} title={asset.name} disabled={isArchived} onClick={() => onSelect(asset)}>
-        <span className="loyalty-asset-card__preview"><img src={asset.cdnUrl} alt="" loading="lazy" /></span>
-      </button>
-      <div className="loyalty-asset-card__actions">
-        {onArchive && !isArchived ? <button type="button" className="loyalty-asset-card__archive" aria-label={`Archive ${asset.name}`} title="Archive" disabled={isArchiving || isDeleting} onClick={async (event) => { event.stopPropagation(); setIsArchiving(true); try { await onArchive(asset.id); } finally { setIsArchiving(false); } }}><Archive size={13} /></button> : null}
-        {onRestore && isArchived ? <button type="button" className="loyalty-asset-card__restore" aria-label={`Restore ${asset.name}`} title="Restore" disabled={isRestoring || isDeleting} onClick={async (event) => { event.stopPropagation(); setIsRestoring(true); try { await onRestore(asset.id); } finally { setIsRestoring(false); } }}><RotateCcw size={13} /></button> : null}
-        {onDelete ? <button type="button" className="loyalty-asset-card__delete" aria-label={`Permanently delete ${asset.name}`} title="Delete permanently" disabled={isArchiving || isRestoring || isDeleting} onClick={async (event) => { event.stopPropagation(); if (typeof window !== "undefined" && !window.confirm("Permanently delete this stamp preset from the library? Existing designs that already use it will keep rendering.")) return; setIsDeleting(true); try { await onDelete(asset.id); } finally { setIsDeleting(false); } }}><Trash2 size={13} /></button> : null}
-      </div>
-    </div>
-  );
-}
-
-function LibraryAssetUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadLibraryAsset"] }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("stamp_empty");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!selectedFile) {
-      setPreviewUrl("");
-      return;
-    }
-    const nextPreviewUrl = URL.createObjectURL(selectedFile);
-    setPreviewUrl(nextPreviewUrl);
-    return () => URL.revokeObjectURL(nextPreviewUrl);
-  }, [selectedFile]);
-  if (!onUpload) return null;
-
-  const resetForm = () => {
-    setName("");
-    setCategory("stamp_empty");
-    setSelectedFile(null);
-    setError(null);
-    if (inputRef.current) inputRef.current.value = "";
-  };
-
-  const closeModal = () => {
-    if (isUploading) return;
-    setIsOpen(false);
-    resetForm();
-  };
-
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      setError("Choose an asset file first");
-      return;
-    }
-    setIsUploading(true);
-    setError(null);
-    try {
-      await onUpload(selectedFile, { name: name.trim() || selectedFile.name.replace(/\.[^.]+$/, ""), category });
-      setIsOpen(false);
-      resetForm();
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Asset upload failed");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  return (
-    <>
-      <button type="button" className="loyalty-library-upload-trigger" onClick={() => setIsOpen(true)}><UploadCloud size={14} />Upload assets</button>
-      {isOpen ? (
-        <div className="loyalty-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
-          <div className="loyalty-modal-card" role="dialog" aria-modal="true" aria-labelledby="loyalty-asset-upload-title">
-            <div className="loyalty-modal-header">
-              <div>
-                <strong id="loyalty-asset-upload-title">Upload stamp asset</strong>
-                <small>Safe SVG or square raster stamp</small>
-              </div>
-              <button type="button" aria-label="Close upload dialog" disabled={isUploading} onClick={closeModal}>x</button>
-            </div>
-            <div className="loyalty-library-upload loyalty-library-upload--modal">
-              <label className="field"><span>Asset name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" /></label>
-              <div className="loyalty-category-choice" role="group" aria-label="Category">
-                <span>Category</span>
-                <div>
-                  <button type="button" aria-pressed={category === "stamp_empty"} className={category === "stamp_empty" ? "loyalty-category-choice__button loyalty-category-choice__button--active" : "loyalty-category-choice__button"} onClick={() => setCategory("stamp_empty")}>Empty stamp</button>
-                  <button type="button" aria-pressed={category === "stamp_filled"} className={category === "stamp_filled" ? "loyalty-category-choice__button loyalty-category-choice__button--active" : "loyalty-category-choice__button"} onClick={() => setCategory("stamp_filled")}>Filled stamp</button>
-                </div>
-              </div>
-              <input ref={inputRef} className="loyalty-image-url-file" type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" onChange={(event) => { setSelectedFile(event.target.files?.[0] || null); setError(null); }} />
-              <button type="button" className="loyalty-file-picker-button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{selectedFile ? selectedFile.name : "Choose file"}</button>
-              {previewUrl ? (
-                <div className="loyalty-selected-asset-preview" aria-label="Selected asset preview">
-                  <img src={previewUrl} alt="" />
-                </div>
-              ) : null}
-              <small className="loyalty-upload-hint">Upload a safe SVG, or a square PNG/JPG/WebP at least 512 x 512 px. Files upload only after you click Upload.</small>
-              {error ? <small className="loyalty-image-url-error">{error}</small> : null}
-              <div className="loyalty-modal-actions">
-                <button type="button" disabled={isUploading} onClick={closeModal}>Cancel</button>
-                <button type="button" disabled={isUploading || !selectedFile} onClick={handleUpload}>{isUploading ? "Uploading" : "Upload"}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-type FontUploadDraft = {
-  id: string;
-  file: File;
-  name: string;
-  fontFamily: string;
-  fontWeight: number;
-  fontStyle: "normal" | "italic";
-  isLikelyVariable: boolean;
-};
-
-type UploadedFontGroup = {
-  id: string;
-  family: string;
-  fonts: LoyaltyCardEditorUploadedFont[];
-};
-
-function fontNameFromFile(fileName: string) {
-  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Uploaded font";
-}
-
-function normalizeFontName(value: string) {
-  return String(value || "")
-    .replace(/\.[a-z0-9]+$/i, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim() || "Uploaded font";
-}
-
-function stripTrailingFontVariant(value: string) {
-  let next = normalizeFontName(value).replace(/\b(variable|vf)\b$/i, "").trim();
-  const variantSuffix = /\s+(extra\s*light|ultra\s*light|extralight|ultralight|thin|hairline|light|regular|normal|medium|semi\s*bold|demi\s*bold|semibold|demibold|extra\s*bold|ultra\s*bold|extrabold|ultrabold|bold|black|heavy|italic|oblique)$/i;
-  while (variantSuffix.test(next)) next = next.replace(variantSuffix, "").trim();
-  return next || normalizeFontName(value);
-}
-
-function normalizeUploadedFontFamilyName(value: string) {
-  return stripTrailingFontVariant(value);
-}
-
-function uploadedFontFamilyKey(value: string) {
-  return normalizeFontName(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uploaded-font";
-}
-
-function inferFontWeight(name: string) {
-  const normalized = name.toLowerCase();
-  if (/thin|hairline/.test(normalized)) return 100;
-  if (/extra\s*light|ultra\s*light/.test(normalized)) return 200;
-  if (/light/.test(normalized)) return 300;
-  if (/regular|normal|book|roman/.test(normalized)) return 400;
-  if (/medium/.test(normalized)) return 500;
-  if (/semi\s*bold|demi\s*bold/.test(normalized)) return 600;
-  if (/extra\s*bold|ultra\s*bold/.test(normalized)) return 800;
-  if (/black|heavy/.test(normalized)) return 900;
-  if (/bold/.test(normalized)) return 700;
-  return 400;
-}
-
-function inferFontStyle(name: string): "normal" | "italic" {
-  return /italic|oblique/i.test(name) ? "italic" : "normal";
-}
-
-function isLikelyVariableFontFile(name: string) {
-  return /(^|[\s_-])(variable|vf)([\s_.-]|$)/i.test(name);
-}
-
-function createFontUploadDraft(file: File, index: number): FontUploadDraft {
-  const fallbackName = fontNameFromFile(file.name);
-  const fontFamily = normalizeUploadedFontFamilyName(fallbackName);
-  return {
-    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
-    file,
-    name: fallbackName,
-    fontFamily,
-    fontWeight: inferFontWeight(fallbackName),
-    fontStyle: inferFontStyle(fallbackName),
-    isLikelyVariable: isLikelyVariableFontFile(fallbackName),
-  };
-}
-
-function FontUpload({ onUpload }: { onUpload?: LoyaltyCardEditorProps["onUploadFont"] }) {
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [drafts, setDrafts] = useState<FontUploadDraft[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-  }, [isOpen]);
-
-  if (!onUpload) return null;
-
-  const resetForm = () => {
-    setDrafts([]);
-    setError(null);
-    if (inputRef.current) inputRef.current.value = "";
-  };
-
-  const closeModal = () => {
-    if (isUploading) return;
-    setIsOpen(false);
-    resetForm();
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  };
-
-  const updateDraft = (id: string, patch: Partial<Omit<FontUploadDraft, "id" | "file">>) => {
-    setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
-  };
-
-  const handleFiles = (files: FileList | null) => {
-    const selectedFiles = Array.from(files || []);
-    if (!selectedFiles.length) return;
-    setDrafts(selectedFiles.map(createFontUploadDraft));
-    setError(null);
-    if (inputRef.current) inputRef.current.value = "";
-  };
-
-  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeModal();
-      return;
-    }
-    if (event.key !== "Tab" || !modalRef.current) return;
-    const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute("disabled") && element.offsetParent !== null);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!drafts.length) {
-      setError("Choose one or more font files first");
-      return;
-    }
-    setIsUploading(true);
-    setError(null);
-    let remainingDrafts = drafts;
-    try {
-      for (const draft of drafts) {
-        const fallbackName = fontNameFromFile(draft.file.name);
-        await onUpload(draft.file, {
-          name: draft.name.trim() || fallbackName,
-          fontFamily: draft.fontFamily.trim() || draft.name.trim() || fallbackName,
-          fontWeight: draft.fontWeight,
-          fontStyle: draft.fontStyle,
-        });
-        remainingDrafts = remainingDrafts.filter((item) => item.id !== draft.id);
-        setDrafts(remainingDrafts);
-      }
-      setIsOpen(false);
-      resetForm();
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
-    } catch (uploadError) {
-      setDrafts(remainingDrafts);
-      setError(uploadError instanceof Error ? uploadError.message : "Font upload failed");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  return (
-    <>
-      <button ref={triggerRef} type="button" className="loyalty-font-upload-trigger" onClick={() => setIsOpen(true)}><UploadCloud size={14} />Upload fonts</button>
-      {isOpen ? (
-        <div className="loyalty-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
-          <div ref={modalRef} className="loyalty-modal-card loyalty-modal-card--font-upload" role="dialog" aria-modal="true" aria-labelledby="loyalty-font-upload-title" onKeyDown={handleDialogKeyDown}>
-            <div className="loyalty-modal-header">
-              <div>
-                <strong id="loyalty-font-upload-title">Upload fonts</strong>
-                <small>Upload WOFF2, WOFF, TTF, or OTF files. Variable axes are detected after upload.</small>
-              </div>
-              <button ref={closeButtonRef} type="button" aria-label="Close upload dialog" disabled={isUploading} onClick={closeModal}>x</button>
-            </div>
-            <div className="loyalty-font-upload-modal">
-              <input ref={inputRef} className="loyalty-image-url-file" type="file" multiple accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => handleFiles(event.target.files)} />
-              <button type="button" className="loyalty-file-picker-button" disabled={isUploading} onClick={() => inputRef.current?.click()}><UploadCloud size={14} />{drafts.length ? `${drafts.length} file${drafts.length === 1 ? "" : "s"} selected` : "Choose font files"}</button>
-              {drafts.length ? (
-                <div className="loyalty-font-upload-list">
-                  {drafts.map((draft) => (
-                    <div key={draft.id} className="loyalty-font-upload-row">
-                      <div className="loyalty-font-upload-row__header">
-                        <div className="loyalty-font-upload-row__file"><strong>{draft.file.name}</strong><small>{Math.ceil(draft.file.size / 1024)} KB</small></div>
-                        {draft.isLikelyVariable ? <span className="loyalty-font-upload-row__badge">Likely variable</span> : null}
-                        <button type="button" className="loyalty-font-upload-row__remove" disabled={isUploading} onClick={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}>Remove</button>
-                      </div>
-                      <div className="loyalty-font-upload-row__fields">
-                        <label className="field"><span>Font name</span><input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} /></label>
-                        <label className="field"><span>Font family</span><input value={draft.fontFamily} onChange={(event) => updateDraft(draft.id, { fontFamily: event.target.value })} /></label>
-                        <label className="field"><span>{draft.isLikelyVariable ? "Preview weight" : "Weight"}</span><input type="number" min={1} max={1000} value={draft.fontWeight} onChange={(event) => updateDraft(draft.id, { fontWeight: clampNumber(Math.round(Number(event.target.value)), 1, 1000) })} /></label>
-                        <label className="field"><span>Style</span><select value={draft.fontStyle} onChange={(event) => updateDraft(draft.id, { fontStyle: event.target.value as "normal" | "italic" })}><option value="normal">Normal</option><option value="italic">Italic</option></select></label>
-                      </div>
-                      {draft.isLikelyVariable ? <small className="loyalty-font-upload-row__hint">If this file has a weight axis, it will be stored as a variable font after upload.</small> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : <small className="loyalty-upload-hint">Names, families, weights, and italic style are prefilled from file names when possible.</small>}
-              {error ? <small className="loyalty-image-url-error">{error}</small> : null}
-              <div className="loyalty-modal-actions">
-                <button type="button" disabled={isUploading} onClick={closeModal}>Cancel</button>
-                <button type="button" disabled={isUploading || !drafts.length} onClick={handleUpload}>{isUploading ? "Uploading" : `Upload${drafts.length > 1 ? ` ${drafts.length} fonts` : ""}`}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function withFace(schema: LoyaltyCardDesignSchema, face: LoyaltyCardFaceKey, elements: LoyaltyCardElement[]) {
-  return {
-    ...schema,
-    faces: {
-      ...schema.faces,
-      [face]: {
-        ...schema.faces[face],
-        elements,
-      },
-    },
-  };
-}
-
-function defaultBackground(type: LoyaltyCardBackground["type"], current?: LoyaltyCardBackground): LoyaltyCardBackground {
-  if (type === "gradient") {
-    if (current?.type === "gradient") return current;
-    const baseColor = current?.type === "solid" || current?.type === "image" ? current.color : "#111827";
-    return { type, colors: [baseColor, "#F97316"], angle: 135 };
+/** A cached JSON key per record object, to tell whether two history steps are the same. */
+function recordKey(record: LoyaltyCardPresetRecord) {
+  let key = recordKeys.get(record);
+  if (key === undefined) {
+    key = JSON.stringify(record);
+    recordKeys.set(record, key);
   }
-  if (type === "image") {
-    if (current?.type === "image") return current;
-    const baseColor = current?.type === "solid" ? current.color : "#111827";
-    return { type, color: baseColor, imageUrl: "", fit: "cover", alignX: "center", alignY: "center", x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, opacity: 1 };
+  return key;
+}
+
+/** Drops history steps at the top of the stack that look exactly like the current record. */
+function dropUnchanged(stack: LoyaltyCardPresetRecord[], current: LoyaltyCardPresetRecord) {
+  const currentKey = recordKey(current);
+  while (stack.length && recordKey(stack[stack.length - 1]) === currentKey) stack.pop();
+  return stack;
+}
+
+function autoPreviewCount(total: number) {
+  return Math.min(Math.max(0, total - 1), Math.max(0, Math.floor(total * 0.75)));
+}
+
+function firstStampGrid(record: LoyaltyCardPresetRecord, preferredFace?: LoyaltyCardFaceKey) {
+  const faces = preferredFace ? [preferredFace, ...LOYALTY_CARD_FACE_KEYS.filter((face) => face !== preferredFace)] : [...LOYALTY_CARD_FACE_KEYS];
+  for (const face of faces) {
+    const grid = record.designSchema.faces[face]?.elements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid");
+    if (grid) return grid;
   }
-  return { type: "solid", color: current?.type === "solid" || current?.type === "image" ? current.color : "#111827" };
-}
-
-function updateElement(schema: LoyaltyCardDesignSchema, face: LoyaltyCardFaceKey, elementId: string, updater: (element: LoyaltyCardElement) => LoyaltyCardElement) {
-  return withFace(
-    schema,
-    face,
-    schema.faces[face].elements.map((element) => (element.id === elementId ? updater(element) : element)),
-  );
-}
-
-function elementLabel(element: LoyaltyCardElement) {
-  if (element.name?.trim()) return element.name.trim();
-  if (element.type === "text") return element.token || element.fallbackText || element.id;
-  if (element.type === "stampGrid") return "Stamp grid";
-  return `${element.type} · ${element.id}`;
-}
-
-function createElement(type: LoyaltyCardElement["type"], zIndex: number, options: { shape?: "rect" | "circle" | "blob" } = {}): LoyaltyCardElement {
-  const requestedShape = options.shape || "rect";
-  const shapeSize = requestedShape === "circle" ? { width: 160, height: 160 } : requestedShape === "blob" ? { width: 180, height: 180 } : { width: 260, height: 120 };
-  const base = {
-    id: `${type}-${Date.now()}`,
-    type,
-    x: 120,
-    y: 120,
-    width: type === "line" ? 320 : type === "shape" ? shapeSize.width : 260,
-    height: type === "line" ? 8 : type === "shape" ? shapeSize.height : 120,
-    rotation: 0,
-    opacity: 1,
-    zIndex,
-  } as const;
-
-  if (type === "text") {
-    return { ...base, type, token: "New text", fallbackText: "", fontSource: "catalog", fontKey: "outfit", fontFamily: "Outfit", fontUrl: "", fontStyle: "normal", fontSize: 42, fontWeight: 700, lineHeight: 1, letterSpacing: 0, textTransform: "none", color: "#111827", align: "left", verticalAlign: "center", textStrokeColor: "#000000", textStrokeWidth: 0 };
-  }
-
-  if (type === "asset") {
-    return { ...base, type, assetId: "image", imageUrl: "", fit: "contain", cropX: 0, cropY: 0, cropScale: 1, filterPreset: "none", filterBrightness: 1, filterContrast: 1, filterSaturation: 1, filterHue: 0, filterSepia: 0, filterGrayscale: 0, filterInvert: 0, filterBlur: 0, lockAspectRatio: true, tint: "#111827" };
-  }
-
-  if (type === "shape") {
-    return { ...base, type, shape: requestedShape, fill: "#F97316", stroke: "", strokeWidth: 0, radius: requestedShape === "circle" ? 999 : 24, lockAspectRatio: requestedShape === "circle" || requestedShape === "blob" };
-  }
-
-  if (type === "line") {
-    return { ...base, type, color: "#111827", strokeWidth: 4 };
-  }
-
-  return { ...base, type, width: 344, height: 128, columns: 4, count: 8, stampRows: [{ count: 4, align: "center" }, { count: 4, align: "center" }], countToken: "", filledToken: "", stampDataToken: "{{stamps}}", shape: "circle", emptyMode: "shape", emptyShape: "circle", emptyFill: "#FFFFFF", emptyStroke: "#111827", emptyStrokeWidth: 2, emptyImageUrl: "", filledMode: "shape", filledShape: "circle", filledFill: "#F97316", filledStroke: "#F97316", filledStrokeWidth: 2, filledImageUrl: "", filledImageUrls: [], filledScale: 1, filledComposition: "overlay", filledRandomRotation: 45, stampSize: 56, previewFilledMode: "auto", autoFitContainer: false, horizontalAlign: "center", verticalAlign: "top", imageFit: "contain", imageInset: 6, showStampDates: true, dateFormat: "short", animation: "stamp", animationDuration: 420, animationStagger: 45, stroke: "#111827", fill: "#FFFFFF", gap: 16 };
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  if (Number.isNaN(value)) return min;
-  return Math.min(max, Math.max(min, value));
-}
-
-function resolvePreviewFilledCount(element: LoyaltyCardStampGridElement) {
-  const count = resolveStampCount(element);
-  if (element.previewFilledMode === "manual") return clampNumber(Math.floor(Number(element.previewFilledCount) || 0), 0, count);
-  return Math.min(Math.max(0, count - 1), Math.max(0, Math.floor(count * 0.75)));
-}
-
-function previewTokenKey(value: string | undefined) {
-  return String(value || "").trim().match(/^{{\s*([a-zA-Z0-9_]+)\s*}}$/)?.[1] || "";
-}
-
-function clampColorAlpha(value: number) {
-  return Math.round(clampNumber(value, 0, 100));
-}
-
-function expandHexColor(value: string) {
-  const hex = value.trim().replace(/^#/, "");
-  if (/^[0-9a-fA-F]{3}$/.test(hex) || /^[0-9a-fA-F]{4}$/.test(hex)) {
-    return hex.split("").map((char) => `${char}${char}`).join("");
-  }
-  if (/^[0-9a-fA-F]{6}$/.test(hex) || /^[0-9a-fA-F]{8}$/.test(hex)) return hex;
   return null;
 }
 
-function alphaToHex(alpha: number) {
-  return Math.round((clampColorAlpha(alpha) / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
+function initialPreviewState(record: LoyaltyCardPresetRecord): StampPreviewState {
+  const grid = firstStampGrid(record, "back");
+  if (grid?.previewFilledMode === "manual") return { mode: "manual", count: Math.max(0, Math.floor(Number(grid.previewFilledCount) || 0)) };
+  return { mode: "auto", count: grid ? autoPreviewCount(resolveStampGridCount(grid)) : 0 };
 }
 
-function hexToAlpha(hex: string | undefined) {
-  if (!hex) return 100;
-  return Math.round((parseInt(hex, 16) / 255) * 100);
+function tokenKey(value: string | undefined) {
+  return singleTokenKey(value);
 }
 
-function parseColor(value: string | undefined, fallback = "#000000") {
-  const raw = String(value || "").trim();
-  const expanded = expandHexColor(raw) || expandHexColor(fallback) || "000000";
-  const hex = expanded.slice(0, 6).toUpperCase();
-  const alpha = expanded.length === 8 ? hexToAlpha(expanded.slice(6, 8)) : 100;
-  return {
-    hex: `#${hex}`,
-    alpha,
-    value: alpha >= 100 ? `#${hex}` : `#${hex}${alphaToHex(alpha)}`,
-  };
+function elementIcon(element: LoyaltyCardElement): IconType {
+  if (element.type === "text") return TextFontIcon;
+  if (element.type === "asset") return Image01Icon;
+  if (element.type === "line") return MinusSignIcon;
+  if (element.type === "stampGrid") return StampIcon;
+  if (element.shape === "circle") return CircleIcon;
+  if (element.shape === "blob") return ShapesIcon;
+  return SquareIcon;
 }
 
-function formatColor(hex: string, alpha: number) {
-  const parsed = parseColor(hex);
-  const nextAlpha = clampColorAlpha(alpha);
-  return nextAlpha >= 100 ? parsed.hex : `${parsed.hex}${alphaToHex(nextAlpha)}`;
+function backgroundSummary(background: LoyaltyCardBackground | null | undefined) {
+  if (!background) return "None";
+  if (background.type === "solid") return `Solid · ${parseColor(background.color).hex.slice(1)}`;
+  if (background.type === "gradient") return `Gradient · ${background.colors.map((color) => parseColor(color).hex.slice(1)).join(" → ")}`;
+  return background.imageUrl ? "Image" : "Image · none chosen";
 }
 
-function ColorField({ icon, label, value, fallback = "#000000", onChange }: { icon?: IconSvgElement; label: string; value: string | undefined; fallback?: string; onChange: (value: string) => void }) {
-  const parsed = parseColor(value, fallback);
-  const [draft, setDraft] = useState(parsed.value);
-
-  useEffect(() => {
-    setDraft(parsed.value);
-  }, [parsed.value]);
-
-  const commitHex = (raw: string) => {
-    const expanded = expandHexColor(raw);
-    if (!expanded) return;
-    const hex = `#${expanded.slice(0, 6).toUpperCase()}`;
-    const alpha = expanded.length === 8 ? hexToAlpha(expanded.slice(6, 8)) : parsed.alpha;
-    onChange(formatColor(hex, alpha));
-  };
-
-  const commitAlpha = (alpha: number) => {
-    onChange(formatColor(parsed.hex, alpha));
-  };
-
-  return (
-    <label className={icon ? "field field--icon loyalty-color-field" : "field loyalty-color-field"}>
-      {icon ? <IconLabel icon={icon} label={label} /> : <span>{label}</span>}
-      <div className="loyalty-color-field__control">
-        <input className="loyalty-color-field__picker" type="color" value={parsed.hex} onChange={(event) => onChange(formatColor(event.target.value, parsed.alpha))} aria-label={`${label} color`} />
-        <input
-          className="loyalty-color-field__hex"
-          value={draft}
-          spellCheck={false}
-          onChange={(event) => {
-            const next = event.target.value.toUpperCase();
-            setDraft(next);
-            commitHex(next);
-          }}
-          onBlur={() => setDraft(parsed.value)}
-          aria-label={`${label} hex`}
-        />
-        <input className="loyalty-color-field__alpha-range" type="range" min="0" max="100" step="1" value={parsed.alpha} onChange={(event) => commitAlpha(Number(event.target.value))} aria-label={`${label} opacity`} />
-        <input className="loyalty-color-field__alpha" type="number" min="0" max="100" step="1" value={parsed.alpha} onChange={(event) => commitAlpha(Number(event.target.value))} aria-label={`${label} opacity percent`} />
-        <span className="loyalty-color-field__percent">%</span>
-      </div>
-    </label>
-  );
+function backgroundSwatch(background: LoyaltyCardBackground | null | undefined): CSSProperties {
+  if (!background) return {};
+  if (background.type === "gradient") return { background: `linear-gradient(${background.angle}deg, ${background.colors.join(", ")})` };
+  if (background.type === "image" && background.imageUrl) return { backgroundColor: background.color, backgroundImage: `url("${background.imageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" };
+  return { background: background.color };
 }
 
-function moveLayer(elements: LoyaltyCardElement[], selectedElementId: string, direction: "up" | "down") {
-  const ordered = normalizeLoyaltyCardLayerOrder(elements).sort((a, b) => a.zIndex - b.zIndex || elements.findIndex((element) => element.id === a.id) - elements.findIndex((element) => element.id === b.id));
-  const selectedIndex = ordered.findIndex((element) => element.id === selectedElementId);
-  const swapIndex = direction === "up" ? selectedIndex + 1 : selectedIndex - 1;
-  if (selectedIndex < 0 || swapIndex < 0 || swapIndex >= ordered.length) return ordered;
-  [ordered[selectedIndex], ordered[swapIndex]] = [ordered[swapIndex], ordered[selectedIndex]];
-  const zIndexById = new Map(ordered.map((element, index) => [element.id, index + 1]));
-  return normalizeLoyaltyCardLayerOrder(elements.map((element) => ({ ...element, zIndex: zIndexById.get(element.id) || element.zIndex } as LoyaltyCardElement)));
-}
+const STATUS_LABELS: Record<string, string> = { draft: "Draft", published: "Published", archived: "Archived" };
 
-function moveLayerToEdge(elements: LoyaltyCardElement[], selectedElementId: string, edge: "front" | "back") {
-  const ordered = normalizeLoyaltyCardLayerOrder(elements).sort((a, b) => a.zIndex - b.zIndex || elements.findIndex((element) => element.id === a.id) - elements.findIndex((element) => element.id === b.id));
-  const selectedIndex = ordered.findIndex((element) => element.id === selectedElementId);
-  if (selectedIndex < 0) return ordered;
-  const [selected] = ordered.splice(selectedIndex, 1);
-  if (edge === "front") ordered.push(selected);
-  else ordered.unshift(selected);
-  const zIndexById = new Map(ordered.map((element, index) => [element.id, index + 1]));
-  return normalizeLoyaltyCardLayerOrder(elements.map((element) => ({ ...element, zIndex: zIndexById.get(element.id) || element.zIndex } as LoyaltyCardElement)));
-}
-
-function reorderLayer(elements: LoyaltyCardElement[], draggedElementId: string, targetElementId: string) {
-  if (draggedElementId === targetElementId) return elements;
-  const orderedTopFirst = normalizeLoyaltyCardLayerOrder(elements).sort((a, b) => b.zIndex - a.zIndex || elements.findIndex((element) => element.id === a.id) - elements.findIndex((element) => element.id === b.id));
-  const draggedIndex = orderedTopFirst.findIndex((element) => element.id === draggedElementId);
-  const targetIndex = orderedTopFirst.findIndex((element) => element.id === targetElementId);
-  if (draggedIndex < 0 || targetIndex < 0) return elements;
-  const [dragged] = orderedTopFirst.splice(draggedIndex, 1);
-  orderedTopFirst.splice(targetIndex, 0, dragged);
-  const bottomFirst = [...orderedTopFirst].reverse();
-  const zIndexById = new Map(bottomFirst.map((element, index) => [element.id, index + 1]));
-  return normalizeLoyaltyCardLayerOrder(elements.map((element) => ({ ...element, zIndex: zIndexById.get(element.id) || element.zIndex } as LoyaltyCardElement)));
-}
-
-function lockedLayerOrderChanged(currentElements: LoyaltyCardElement[], nextElements: LoyaltyCardElement[]) {
-  const nextById = new Map(nextElements.map((element) => [element.id, element]));
-  return currentElements.some((element) => element.locked && nextById.get(element.id)?.zIndex !== element.zIndex);
-}
-
-function rotatedElementBounds(element: LoyaltyCardElement) {
-  const radians = ((element.rotation || 0) * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(radians));
-  const sin = Math.abs(Math.sin(radians));
-  const width = element.width * cos + element.height * sin;
-  const height = element.width * sin + element.height * cos;
-  const centerX = element.x + element.width / 2;
-  const centerY = element.y + element.height / 2;
-  return {
-    left: centerX - width / 2,
-    top: centerY - height / 2,
-    right: centerX + width / 2,
-    bottom: centerY + height / 2,
-    width,
-    height,
-    centerX,
-    centerY,
-  };
-}
-
-function elementFrameBounds(elements: LoyaltyCardElement[]) {
-  const bounds = elements.map(rotatedElementBounds);
-  const left = Math.min(...bounds.map((bound) => bound.left));
-  const top = Math.min(...bounds.map((bound) => bound.top));
-  const right = Math.max(...bounds.map((bound) => bound.right));
-  const bottom = Math.max(...bounds.map((bound) => bound.bottom));
-  return { left, top, right, bottom, width: right - left, height: bottom - top };
-}
-
-function elementsChanged(currentElements: LoyaltyCardElement[], nextElements: LoyaltyCardElement[]) {
-  return nextElements.some((element, index) => element.x !== currentElements[index]?.x || element.y !== currentElements[index]?.y);
-}
-
-function alignElements(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y", position: "start" | "center" | "end") {
-  const selected = elements.filter((element) => selectedIds.has(element.id));
-  if (selected.length === 0) return elements;
-  const bounds = selected.length === 1 ? { left: 0, top: 0, right: CANVAS_WIDTH, bottom: CANVAS_HEIGHT, width: CANVAS_WIDTH, height: CANVAS_HEIGHT } : elementFrameBounds(selected);
-
-  return elements.map((element) => {
-    if (!selectedIds.has(element.id)) return element;
-    const elementBounds = rotatedElementBounds(element);
-    if (axis === "x") {
-      const visualLeft = position === "start" ? bounds.left : position === "center" ? bounds.left + (bounds.width - elementBounds.width) / 2 : bounds.right - elementBounds.width;
-      const x = visualLeft + elementBounds.width / 2 - element.width / 2;
-      return { ...element, x: Math.round(x * 10) / 10 } as LoyaltyCardElement;
-    }
-    const visualTop = position === "start" ? bounds.top : position === "center" ? bounds.top + (bounds.height - elementBounds.height) / 2 : bounds.bottom - elementBounds.height;
-    const y = visualTop + elementBounds.height / 2 - element.height / 2;
-    return { ...element, y: Math.round(y * 10) / 10 } as LoyaltyCardElement;
-  });
-}
-
-function centerElementsOnCanvas(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y" | "both") {
-  const selected = elements.filter((element) => selectedIds.has(element.id));
-  if (selected.length === 0) return elements;
-  const bounds = elementFrameBounds(selected);
-  const dx = axis === "x" || axis === "both" ? CANVAS_WIDTH / 2 - (bounds.left + bounds.width / 2) : 0;
-  const dy = axis === "y" || axis === "both" ? CANVAS_HEIGHT / 2 - (bounds.top + bounds.height / 2) : 0;
-
-  return elements.map((element) => selectedIds.has(element.id) ? { ...element, x: Math.round((element.x + dx) * 10) / 10, y: Math.round((element.y + dy) * 10) / 10 } as LoyaltyCardElement : element);
-}
-
-function distributeElements(elements: LoyaltyCardElement[], selectedIds: Set<string>, axis: "x" | "y") {
-  const selected = elements.filter((element) => selectedIds.has(element.id));
-  if (selected.length < 3) return elements;
-  const sorted = [...selected].sort((a, b) => {
-    const aBounds = rotatedElementBounds(a);
-    const bBounds = rotatedElementBounds(b);
-    return axis === "x" ? aBounds.left - bBounds.left : aBounds.top - bBounds.top;
-  });
-  const firstBounds = rotatedElementBounds(sorted[0]);
-  const lastBounds = rotatedElementBounds(sorted[sorted.length - 1]);
-  const start = axis === "x" ? firstBounds.left : firstBounds.top;
-  const end = axis === "x" ? lastBounds.right : lastBounds.bottom;
-  const totalSize = sorted.reduce((sum, element) => {
-    const bounds = rotatedElementBounds(element);
-    return sum + (axis === "x" ? bounds.width : bounds.height);
-  }, 0);
-  const gap = (end - start - totalSize) / (sorted.length - 1);
-  const positions = new Map<string, number>();
-  let cursor = start;
-
-  sorted.forEach((element) => {
-    const bounds = rotatedElementBounds(element);
-    const position = axis === "x" ? cursor + bounds.width / 2 - element.width / 2 : cursor + bounds.height / 2 - element.height / 2;
-    positions.set(element.id, Math.round(position * 10) / 10);
-    cursor += (axis === "x" ? bounds.width : bounds.height) + gap;
-  });
-
-  return elements.map((element) => {
-    const position = positions.get(element.id);
-    if (position === undefined) return element;
-    return axis === "x" ? { ...element, x: position } as LoyaltyCardElement : { ...element, y: position } as LoyaltyCardElement;
-  });
-}
+const TEXT_PRESETS: Array<{ id: "heading" | "subheading" | "body"; label: string }> = [
+  { id: "heading", label: "Add a heading" },
+  { id: "subheading", label: "Add a subheading" },
+  { id: "body", label: "Add body text" },
+];
 
 export function LoyaltyCardEditor({
   value,
@@ -1220,55 +326,95 @@ export function LoyaltyCardEditor({
   onUploadFont,
   onArchiveFont,
   onDeleteFont,
+  onBack,
+  backLabel = "Back",
+  onSaveDraft,
+  saveDraftLabel = "Save draft",
+  onPublish,
+  publishLabel = "Publish",
+  isSaving = false,
+  savedAt,
+  hasUnsavedChanges = false,
+  menuActions = [],
+  showPresetDetails = false,
 }: LoyaltyCardEditorProps) {
   const faceKeys = faces && faces.length ? faces : [...LOYALTY_CARD_FACE_KEYS];
   const [activeFace, setActiveFace] = useState<LoyaltyCardFaceKey>(faceKeys[0]);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
-  const [leftPanelTab, setLeftPanelTab] = useState<"tools" | "layers">("tools");
-  const [stampPresetTab, setStampPresetTab] = useState<"empty" | "filled">("empty");
-  const [showArchivedAssets, setShowArchivedAssets] = useState(false);
+  const [leftTab, setLeftTab] = useState<LeftTab>("add");
+  const [libraryTarget, setLibraryTarget] = useState<StampTarget>("filled");
   const [inspectorPane, setInspectorPane] = useState<"properties" | "fontPicker">("properties");
+  const [stampTab, setStampTab] = useState<StampGridTab>("layout");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [editorTheme, setEditorTheme] = useState<EditorChromeTheme>(() => getStoredEditorTheme());
-  const [fontSearch, setFontSearch] = useState("");
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<number | "auto" | "fit">("auto");
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [preview, setPreview] = useState<StampPreviewState>(() => initialPreviewState(value));
+  const [sample, setSample] = useState<SampleData>(() => ({ venueName: String(tokens.venueName ?? ""), rewardTitle: String(tokens.rewardTitle ?? "") }));
+  const [replayKey, setReplayKey] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewFace, setPreviewFace] = useState<LoyaltyCardFaceKey>(faceKeys[0]);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [orderMenuOpen, setOrderMenuOpen] = useState(false);
+  const [fontUploadOpen, setFontUploadOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const undoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
+  const lastCommitAtRef = useRef(0);
+  const lastCommitChangeRef = useRef("");
+  // The latest record, so edits that finish later (an image upload) apply on top of what changed meanwhile.
+  const valueRef = useRef(value);
+  const restoreLayerFocusRef = useRef<string | null>(null);
   const redoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
   const clipboardElementsRef = useRef<LoyaltyCardElement[]>([]);
   const lastSyncedIdRef = useRef<string>(value.id);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const stampDatesBaseRef = useRef(Date.now());
 
-  const selectedPreset = value;
-  const activeElements = selectedPreset.designSchema.faces[activeFace]?.elements || [];
-  const activeBackground = selectedPreset.designSchema.faces[activeFace]?.background || null;
-  const activeGroups = selectedPreset.designSchema.faces[activeFace]?.groups || [];
+  const record = value;
+  const activeFaceData = record.designSchema.faces[activeFace];
+  const activeElements = activeFaceData?.elements || [];
+  const activeBackground = activeFaceData?.background || null;
+  const activeGroups = activeFaceData?.groups || [];
   const selectedElements = activeElements.filter((element) => selectedElementIds.includes(element.id));
   const selectedEditableElements = selectedElements.filter((element) => !element.locked && !element.hidden);
   const selectedElement = selectedElementIds.length === 1 ? activeElements.find((element) => element.id === selectedElementIds[0]) || null : null;
-  const editorPreviewTokens = useMemo(() => {
-    const previewStampGrid = selectedElement?.type === "stampGrid" ? selectedElement : activeElements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid");
-    if (!previewStampGrid) return tokens;
-    const previewFilledCount = resolvePreviewFilledCount(previewStampGrid);
-    const previewStamps = Array.from({ length: previewFilledCount }).map((_, index) => ({ awardedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString() }));
-    const stampDataKey = previewTokenKey(previewStampGrid.stampDataToken || "{{stamps}}");
-    const filledKey = previewTokenKey(previewStampGrid.filledToken);
-    return {
-      ...tokens,
-      stamps: previewStamps,
-      stampsCollected: previewFilledCount,
-      ...(stampDataKey ? { [stampDataKey]: previewStamps } : {}),
-      ...(filledKey ? { [filledKey]: previewFilledCount } : {}),
-    };
-  }, [activeElements, selectedElement, tokens]);
   const selectedGroupIds = activeGroups.filter((group) => group.elementIds.some((id) => selectedElementIds.includes(id))).map((group) => group.id);
-  const emptyStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_empty" && asset.status !== "archived");
-  const filledStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_filled" && asset.status !== "archived");
-  const archivedEmptyStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_empty" && asset.status === "archived");
-  const archivedFilledStampAssets = assetLibrary.filter((asset) => asset.category === "stamp_filled" && asset.status === "archived");
-  const hasArchivedStampAssets = stampPresetTab === "empty" ? archivedEmptyStampAssets.length > 0 : archivedFilledStampAssets.length > 0;
-  const showArchivedForActiveStampTab = showArchivedAssets && hasArchivedStampAssets;
-  const visibleEmptyStampAssets = showArchivedForActiveStampTab ? archivedEmptyStampAssets : emptyStampAssets;
-  const visibleFilledStampAssets = showArchivedForActiveStampTab ? archivedFilledStampAssets : filledStampAssets;
-  const showStampPresetPanel = selectedElement?.type === "stampGrid" && activeFace === "back";
+  const fontGroups = useMemo(() => groupUploadedFonts(uploadedFonts), [uploadedFonts]);
+
+  const previewGrid = selectedElement?.type === "stampGrid" ? selectedElement : activeElements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid") || firstStampGrid(record, "back");
+  const previewLiveTotal = previewGrid?.countToken ? Number(resolveLoyaltyCardToken(previewGrid.countToken, tokens)) : undefined;
+  const previewTotal = previewGrid ? resolveStampGridCount(previewGrid, previewLiveTotal) : Number(tokens.stampsRequired) || 10;
+  const effectivePreviewCount = previewGrid ? (preview.mode === "manual" ? clampNumber(preview.count, 0, previewTotal) : autoPreviewCount(previewTotal)) : Number(tokens.stampsCollected) || 0;
+
+  const editorTokens = useMemo<LoyaltyCardTokens>(() => {
+    const base: LoyaltyCardTokens = {
+      ...tokens,
+      venueName: sample.venueName,
+      rewardTitle: sample.rewardTitle,
+    };
+    if (!previewGrid) return base;
+    const stamps = Array.from({ length: effectivePreviewCount }).map((_, index) => ({ awardedAt: new Date(stampDatesBaseRef.current - (effectivePreviewCount - index) * 3 * DAY_MS).toISOString() }));
+    const stampDataKey = tokenKey(previewGrid.stampDataToken || "{{stamps}}");
+    const filledKey = tokenKey(previewGrid.filledToken);
+    return {
+      ...base,
+      stamps,
+      stampsCollected: effectivePreviewCount,
+      // "{{stampsCollected}}/{{stampsRequired}}" text matches the grid on the card.
+      stampsRequired: previewTotal,
+      ...(stampDataKey ? { [stampDataKey]: stamps } : {}),
+      ...(filledKey ? { [filledKey]: effectivePreviewCount } : {}),
+    };
+  }, [tokens, sample, previewGrid, effectivePreviewCount, previewTotal]);
+
+  /* ----- effects ----- */
+
+  useEffect(() => {
+    ensureEditorFonts();
+  }, []);
 
   useEffect(() => {
     try {
@@ -1284,54 +430,104 @@ export function LoyaltyCardEditor({
       undoStackRef.current = [];
       redoStackRef.current = [];
       setActiveFace(faceKeys[0]);
+      setPreview(initialPreviewState(value));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.id]);
 
   useEffect(() => {
     setSelectedElementIds((current) => {
-      const elements = value.designSchema.faces[activeFace]?.elements || [];
-      const elementIds = new Set(elements.map((element) => element.id));
-      const validSelection = current.filter((id) => elementIds.has(id));
-      if (validSelection.length > 0) return validSelection;
-
-      const firstElementId = elements[0]?.id;
-      return firstElementId ? [firstElementId] : [];
+      const ids = new Set((value.designSchema.faces[activeFace]?.elements || []).map((element) => element.id));
+      const valid = current.filter((id) => ids.has(id));
+      return valid.length === current.length ? current : valid;
     });
-  }, [value.id, activeFace]);
+  }, [value.id, activeFace, value.designSchema]);
+
+  // Follow the host's sample tokens when they change (for example another venue's name).
+  useEffect(() => {
+    setSample({ venueName: String(tokens.venueName ?? ""), rewardTitle: String(tokens.rewardTitle ?? "") });
+  }, [tokens.venueName, tokens.rewardTitle]);
 
   useEffect(() => {
     setInspectorPane("properties");
+    setRenamingLayerId(null);
   }, [selectedElementIds.join(","), activeFace]);
 
-  const commit = (updater: (preset: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord, options: { recordHistory?: boolean } = {}) => {
-    if (options.recordHistory !== false) {
-      undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), structuredClone(value)];
-      redoStackRef.current = [];
-    }
-    onChange(updater(value));
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, [savedAt]);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setStageSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  /* ----- history ----- */
+
+  useLayoutEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const pushUndo = (base: LoyaltyCardPresetRecord = valueRef.current) => {
+    const stack = dropUnchanged([...undoStackRef.current], base);
+    undoStackRef.current = [...stack.slice(-(HISTORY_LIMIT - 1)), structuredClone(base)];
+    redoStackRef.current = [];
+    lastCommitAtRef.current = 0;
   };
 
-  const recordHistorySnapshot = () => {
-    undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), structuredClone(value)];
-    redoStackRef.current = [];
+  // Edits that arrive in a quick run (typing a number, dragging a slider) share one undo step.
+  // An edit that changes nothing (Bring to front on the top layer) leaves undo and redo alone.
+  const commit = (updater: (preset: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord, options: { recordHistory?: boolean } = {}) => {
+    const base = valueRef.current;
+    const next = updater(base);
+    if (next === base || recordKey(next) === recordKey(base)) return;
+    if (options.recordHistory !== false) {
+      const now = Date.now();
+      const change = describeRecordChange(base, next);
+      const inRun = now - lastCommitAtRef.current < HISTORY_COALESCE_MS && change === lastCommitChangeRef.current && undoStackRef.current.length > 0;
+      if (!inRun) pushUndo(base);
+      lastCommitAtRef.current = now;
+      lastCommitChangeRef.current = change;
+    }
+    onChange(next);
   };
+
+  const commitElements = (nextElements: LoyaltyCardElement[], options?: { recordHistory?: boolean }) => {
+    commit((preset) => normalizeLoyaltyCardPreset({ ...preset, designSchema: withFace(preset.designSchema, activeFace, nextElements) }), options);
+  };
+
+  const keepValidSelection = (next: LoyaltyCardPresetRecord) => setSelectedElementIds((current) => current.filter((id) => next.designSchema.faces[activeFace]?.elements.some((element) => element.id === id)));
 
   const handleUndo = () => {
-    const previous = undoStackRef.current.pop();
+    const previous = dropUnchanged(undoStackRef.current, value).pop();
     if (!previous) return;
+    lastCommitAtRef.current = 0;
     redoStackRef.current = [...redoStackRef.current.slice(-(HISTORY_LIMIT - 1)), structuredClone(value)];
-    setSelectedElementIds((current) => current.filter((id) => previous.designSchema.faces[activeFace]?.elements.some((element) => element.id === id)));
+    keepValidSelection(previous);
     onChange(previous);
   };
 
   const handleRedo = () => {
-    const next = redoStackRef.current.pop();
+    const next = dropUnchanged(redoStackRef.current, value).pop();
     if (!next) return;
+    lastCommitAtRef.current = 0;
     undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), structuredClone(value)];
-    setSelectedElementIds((current) => current.filter((id) => next.designSchema.faces[activeFace]?.elements.some((element) => element.id === id)));
+    keepValidSelection(next);
     onChange(next);
   };
+
+  /* ----- selection and element edits ----- */
 
   const handleSelectElement = (elementId: string, additive = false, isolate = false) => {
     if (!elementId) {
@@ -1342,265 +538,40 @@ export function LoyaltyCardEditor({
     setSelectedElementIds((current) => {
       if (!additive) return groupElementIds;
       const groupSet = new Set(groupElementIds);
-      const isGroupSelected = groupElementIds.every((id) => current.includes(id));
-      if (isGroupSelected) return current.filter((id) => !groupSet.has(id));
+      if (groupElementIds.every((id) => current.includes(id))) return current.filter((id) => !groupSet.has(id));
       return Array.from(new Set([...current, ...groupElementIds]));
     });
   };
 
+  const updateLayerElement = (elementId: string, updater: (element: LoyaltyCardElement) => LoyaltyCardElement) => {
+    commit((preset) => normalizeLoyaltyCardPreset({ ...preset, designSchema: updateElement(preset.designSchema, activeFace, elementId, updater) }));
+  };
+
   const updateSelectedElement = (updater: (element: LoyaltyCardElement) => LoyaltyCardElement) => {
     if (!selectedElement || selectedElement.locked) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: updateElement(preset.designSchema, activeFace, selectedElement.id, updater),
-    }));
+    updateLayerElement(selectedElement.id, updater);
   };
 
-  const updateSelectedStampGrid = (next: Partial<LoyaltyCardStampGridElement>) => {
-    updateSelectedElement((element) => {
-      if (element.type !== "stampGrid") return element;
-      return { ...element, ...next } as LoyaltyCardElement;
-    });
-  };
+  function typedUpdater<T extends LoyaltyCardElement["type"]>(type: T) {
+    return (updater: (element: Extract<LoyaltyCardElement, { type: T }>) => Extract<LoyaltyCardElement, { type: T }>) => updateSelectedElement((element) => (element.type === type ? updater(element as Extract<LoyaltyCardElement, { type: T }>) : element));
+  }
 
-  const fontOptionsByCategory = useMemo(() => {
-    const query = fontSearch.trim().toLowerCase();
-    const matchingFonts = loyaltyCardFontCatalog.filter((font) => {
-      if (!query) return true;
-      return font.family.toLowerCase().includes(query) || font.category.toLowerCase().includes(query) || font.license.toLowerCase().includes(query);
-    });
-    return fontCategories.map((category) => ({
-      category,
-      fonts: matchingFonts.filter((font) => font.category === category),
-    })).filter((group) => group.fonts.length > 0);
-  }, [fontSearch]);
-  const uploadedFontGroups = useMemo(() => {
-    const groupsByKey = new Map<string, UploadedFontGroup>();
-    const exactFamilies = uploadedFonts.map((font) => normalizeFontName(font.fontFamily || font.name));
-    const exactKeys = new Set(exactFamilies.map(uploadedFontFamilyKey));
-    const strippedCounts = new Map<string, number>();
-    uploadedFonts.forEach((font) => {
-      const strippedFamily = stripTrailingFontVariant(font.fontFamily || font.name);
-      const strippedKey = uploadedFontFamilyKey(strippedFamily);
-      strippedCounts.set(strippedKey, (strippedCounts.get(strippedKey) || 0) + 1);
-    });
-    uploadedFonts.forEach((font) => {
-      const exactFamily = normalizeFontName(font.fontFamily || font.name);
-      const strippedFamily = stripTrailingFontVariant(exactFamily);
-      const strippedKey = uploadedFontFamilyKey(strippedFamily);
-      const exactKey = uploadedFontFamilyKey(exactFamily);
-      const shouldGroupByStrippedFamily = strippedKey !== exactKey && ((strippedCounts.get(strippedKey) || 0) > 1 || exactKeys.has(strippedKey));
-      const family = shouldGroupByStrippedFamily ? strippedFamily : exactFamily;
-      const key = uploadedFontFamilyKey(family);
-      const group = groupsByKey.get(key) || { id: key, family, fonts: [] };
-      group.fonts.push(font);
-      groupsByKey.set(key, group);
-    });
-    return Array.from(groupsByKey.values())
-      .map((group) => ({ ...group, fonts: sortUploadedFontVariants(group.fonts) }))
-      .sort((a, b) => a.family.localeCompare(b.family));
-  }, [uploadedFonts]);
-  const visibleUploadedFontGroups = useMemo(() => {
-    const query = fontSearch.trim().toLowerCase();
-    return uploadedFontGroups.filter((group) => {
-      if (!query) return true;
-      return group.family.toLowerCase().includes(query) || group.fonts.some((font) => font.name.toLowerCase().includes(query) || font.fontFamily.toLowerCase().includes(query));
-    });
-  }, [fontSearch, uploadedFontGroups]);
-  const visibleFontCount = fontOptionsByCategory.reduce((count, group) => count + group.fonts.length, 0) + visibleUploadedFontGroups.length;
-
-  const applyCatalogFont = (fontKey: string) => {
-    const font = loyaltyCardFontCatalog.find((item) => item.key === fontKey);
-    if (!font) return;
-    updateSelectedElement((element) => {
-      if (element.type !== "text") return element;
-      return {
-        ...element,
-        fontSource: "catalog",
-        fontKey: font.key,
-        fontFamily: font.family,
-        fontUrl: "",
-        fontIsVariable: undefined,
-        fontWeightMin: undefined,
-        fontWeightMax: undefined,
-        fontWeightDefault: undefined,
-        fontWeight: font.weights.includes(element.fontWeight) ? element.fontWeight : getFontPreviewWeight(font),
-        fontStyle: font.styles.includes(element.fontStyle || "normal") ? element.fontStyle : "normal",
-      };
-    });
-    setInspectorPane("properties");
-  };
-
-  const chooseUploadedFontVariant = (group: UploadedFontGroup, preferredWeight = 400, preferredStyle: "normal" | "italic" = "normal") => {
-    const sameStyle = group.fonts.filter((font) => (font.fontStyle || "normal") === preferredStyle);
-    const candidates = sameStyle.length ? sameStyle : group.fonts;
-    const variable = candidates.find((font) => font.isVariable && preferredWeight >= (font.fontWeightMin || 100) && preferredWeight <= (font.fontWeightMax || 900));
-    if (variable) return variable;
-    return candidates.reduce((nearest, font) => (Math.abs((font.fontWeight || 400) - preferredWeight) < Math.abs((nearest.fontWeight || 400) - preferredWeight) ? font : nearest), candidates[0]);
-  };
-
-  const applyUploadedFontGroup = (group: UploadedFontGroup) => {
-    const preferredWeight = selectedElement?.type === "text" ? getTextFontWeight(selectedElement) : 400;
-    const preferredStyle = selectedElement?.type === "text" ? getTextFontStyle(selectedElement) : "normal";
-    const font = chooseUploadedFontVariant(group, preferredWeight, preferredStyle);
-    const fontUrl = font ? getUploadedFontUrl(font) : "";
-    if (!font || !fontUrl) return;
-    loadUploadedFontPreview(font);
-    updateSelectedElement((element) => {
-      if (element.type !== "text") return element;
-      return {
-        ...element,
-        fontSource: "customUrl",
-        fontKey: font.id,
-        fontFamily: font.fontFamily,
-        fontUrl,
-        fontIsVariable: Boolean(font.isVariable),
-        fontWeightMin: font.fontWeightMin,
-        fontWeightMax: font.fontWeightMax,
-        fontWeightDefault: font.fontWeightDefault,
-        fontWeight: font.isVariable ? clampNumber(preferredWeight, font.fontWeightMin || 100, font.fontWeightMax || 900) : font.fontWeight || element.fontWeight || 400,
-        fontStyle: font.fontStyle || "normal",
-      };
-    });
-    setInspectorPane("properties");
-  };
-
-  const findUploadedFontGroupForElement = (element: Extract<LoyaltyCardElement, { type: "text" }>) => {
-    if (element.fontSource !== "customUrl") return null;
-    return uploadedFontGroups.find((group) => group.fonts.some((font) => font.id === element.fontKey) || uploadedFontFamilyKey(element.fontFamily) === group.id) || null;
-  };
-
-  const getAvailableTextWeights = (element: Extract<LoyaltyCardElement, { type: "text" }>) => {
-    const currentWeight = getTextFontWeight(element);
-    if (element.fontSource === "customUrl") {
-      const group = findUploadedFontGroupForElement(element);
-      const preferredStyle = getTextFontStyle(element);
-      const selectedFont = group?.fonts.find((font) => font.id === element.fontKey);
-      const styleFonts = group?.fonts.filter((font) => (font.fontStyle || "normal") === preferredStyle) || [];
-      const candidates = styleFonts.length ? styleFonts : group?.fonts || [];
-      const variableFont = selectedFont?.isVariable ? selectedFont : candidates.find((font) => font.isVariable);
-      if (variableFont || element.fontIsVariable) {
-        return getVariableFontWeightOptions(variableFont?.fontWeightMin ?? element.fontWeightMin ?? 100, variableFont?.fontWeightMax ?? element.fontWeightMax ?? 900, currentWeight);
-      }
-      const staticWeights = candidates.map((font) => Math.round(Number(font.fontWeight || 400))).filter((weight) => Number.isFinite(weight));
-      if (staticWeights.length) return withCurrentFontWeight(staticWeights, currentWeight, staticWeights.includes(currentWeight));
-    }
-
-    const catalogFont = findLoyaltyCardFont(getTextFontKey(element));
-    if (catalogFont) return withCurrentFontWeight(catalogFont.weights, currentWeight, catalogFont.weights.includes(currentWeight));
-    return withCurrentFontWeight(fontWeights, currentWeight);
-  };
-
-  const getAvailableTextStyles = (element: Extract<LoyaltyCardElement, { type: "text" }>): Array<"normal" | "italic"> => {
-    const currentStyle = getTextFontStyle(element);
-    if (element.fontSource === "customUrl") {
-      const group = findUploadedFontGroupForElement(element);
-      const selectedFontExists = group?.fonts.some((font) => font.id === element.fontKey);
-      if (!group || !selectedFontExists) return [currentStyle];
-      const styles: Array<"normal" | "italic"> = group.fonts.map((font) => font.fontStyle === "italic" ? "italic" : "normal");
-      return withCurrentFontStyle(styles, currentStyle, styles.includes(currentStyle));
-    }
-
-    const catalogFont = findLoyaltyCardFont(getTextFontKey(element));
-    if (catalogFont) return withCurrentFontStyle(catalogFont.styles, currentStyle, catalogFont.styles.includes(currentStyle));
-    return [currentStyle];
-  };
-
-  const getSelectedTextFontWeight = (element: Extract<LoyaltyCardElement, { type: "text" }>, options: number[]) => {
-    const currentWeight = getTextFontWeight(element);
-    return options.includes(currentWeight) ? currentWeight : closestFontWeight(options, currentWeight);
-  };
-
-  const getSelectedTextFontStyle = (element: Extract<LoyaltyCardElement, { type: "text" }>, options: Array<"normal" | "italic">) => {
-    const currentStyle = getTextFontStyle(element);
-    return options.includes(currentStyle) ? currentStyle : options[0] || "normal";
-  };
-
-  const applyUploadedVariantToTextElement = (element: Extract<LoyaltyCardElement, { type: "text" }>, weight: number, style: "normal" | "italic") => {
-    const group = findUploadedFontGroupForElement(element);
-    if (!group) return { ...element, fontWeight: weight, fontStyle: style } as LoyaltyCardElement;
-    const font = chooseUploadedFontVariant(group, weight, style);
-    const fontUrl = font ? getUploadedFontUrl(font) : "";
-    if (!font || !fontUrl) return { ...element, fontWeight: weight, fontStyle: style } as LoyaltyCardElement;
-    loadUploadedFontPreview(font);
-    return {
-      ...element,
-      fontSource: "customUrl",
-      fontKey: font.id,
-      fontFamily: font.fontFamily,
-      fontUrl,
-      fontIsVariable: Boolean(font.isVariable),
-      fontWeightMin: font.fontWeightMin,
-      fontWeightMax: font.fontWeightMax,
-      fontWeightDefault: font.fontWeightDefault,
-      fontWeight: font.isVariable ? clampNumber(weight, font.fontWeightMin || 100, font.fontWeightMax || 900) : font.fontWeight || weight,
-      fontStyle: font.fontStyle || style,
-    } as LoyaltyCardElement;
-  };
-
-  const applyEmptyStampPreset = (asset: LoyaltyCardEditorLibraryAsset) => {
-    updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: "image", emptyImageUrl: asset.cdnUrl } : element);
-  };
-
-  const applyFilledStampPreset = (asset: LoyaltyCardEditorLibraryAsset) => {
-    updateSelectedElement((element) => {
-      if (element.type !== "stampGrid") return element;
-      const currentUrls = Array.from(new Set([...(element.filledImageUrls || []), element.filledImageUrl || ""].filter(Boolean)));
-      const isSelected = currentUrls.includes(asset.cdnUrl);
-      const nextUrls = isSelected
-        ? currentUrls.filter((url) => url !== asset.cdnUrl)
-        : currentUrls.length < MAX_FILLED_STAMP_PRESETS
-          ? [...currentUrls, asset.cdnUrl]
-          : currentUrls;
-      return {
-        ...element,
-        filledMode: nextUrls.length ? "image" : "shape",
-        filledImageUrl: nextUrls[0] || "",
-        filledImageUrls: nextUrls,
-      };
-    });
-  };
-
-  const updateBackground = (background: LoyaltyCardBackground) => {
-    commit((preset) => ({
-      ...preset,
-      designSchema: {
-        ...preset.designSchema,
-        faces: {
-          ...preset.designSchema.faces,
-          [activeFace]: {
-            ...preset.designSchema.faces[activeFace],
-            background,
-          },
-        },
-      },
-    }));
-  };
-
-  const updateBackgroundField = (updater: (background: LoyaltyCardBackground) => LoyaltyCardBackground) => {
-    if (!activeBackground) return;
-    updateBackground(updater(activeBackground));
-  };
-
-  const handleAddElement = (type: LoyaltyCardElement["type"], options?: { shape?: "rect" | "circle" | "blob" }) => {
+  const handleAddElement = (type: LoyaltyCardElement["type"], options: Parameters<typeof createElement>[2] = {}) => {
     if (type === "stampGrid" && activeFace !== "back") return;
-    const element = createElement(type, activeElements.length + 1, options);
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, [...preset.designSchema.faces[activeFace].elements, element]),
-    }));
+    const element = createElement(type, activeElements.length + 1, { ...options, color: options.color || (type === "text" ? contrastingTextColor(activeBackground) : undefined) });
+    commit((preset) => normalizeLoyaltyCardPreset({ ...preset, designSchema: withFace(preset.designSchema, activeFace, [...preset.designSchema.faces[activeFace].elements, element]) }));
     setSelectedElementIds([element.id]);
+    if (type === "stampGrid") setStampTab("layout");
   };
 
   const handleDeleteElement = () => {
-    if (selectedElementIds.length === 0) return;
     const selectedIds = new Set(activeElements.filter((element) => selectedElementIds.includes(element.id) && !element.locked).map((element) => element.id));
     if (selectedIds.size === 0) return;
     const nextElements = normalizeLoyaltyCardLayerOrder(activeElements.filter((element) => !selectedIds.has(element.id)));
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
       designSchema: {
-        ...withFace(preset.designSchema, activeFace, nextElements),
+        ...preset.designSchema,
         faces: {
           ...preset.designSchema.faces,
           [activeFace]: {
@@ -1611,245 +582,264 @@ export function LoyaltyCardEditor({
         },
       },
     }));
-    setSelectedElementIds(nextElements[0]?.id ? [nextElements[0].id] : []);
+    setSelectedElementIds([]);
   };
 
   const handleLayerStep = (direction: "up" | "down") => {
     if (!selectedElement || selectedElement.locked) return;
     const nextElements = moveLayer(activeElements, selectedElement.id, direction);
     if (lockedLayerOrderChanged(activeElements, nextElements)) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
-    }));
+    commitElements(nextElements);
   };
 
   const handleLayerEdge = (edge: "front" | "back") => {
     if (!selectedElement || selectedElement.locked) return;
     const nextElements = moveLayerToEdge(activeElements, selectedElement.id, edge);
     if (lockedLayerOrderChanged(activeElements, nextElements)) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
-    }));
-  };
-
-  const updateLayerElement = (elementId: string, updater: (element: LoyaltyCardElement) => LoyaltyCardElement) => {
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: updateElement(preset.designSchema, activeFace, elementId, updater),
-    }));
+    commitElements(nextElements);
   };
 
   const handleLayerDrop = (targetElementId: string) => {
     if (!draggedLayerId || draggedLayerId === targetElementId) return;
-    const draggedLayer = activeElements.find((element) => element.id === draggedLayerId);
-    if (!draggedLayer || draggedLayer.locked) return;
+    const dragged = activeElements.find((element) => element.id === draggedLayerId);
+    if (!dragged || dragged.locked) return;
     const nextElements = reorderLayer(activeElements, draggedLayerId, targetElementId);
-    if (nextElements === activeElements) return;
-    if (lockedLayerOrderChanged(activeElements, nextElements)) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
-    }));
+    if (nextElements === activeElements || lockedLayerOrderChanged(activeElements, nextElements)) return;
+    commitElements(nextElements);
     setDraggedLayerId(null);
   };
 
-  const handleAlignElements = (axis: "x" | "y", position: "start" | "center" | "end") => {
+  const editableIds = () => new Set(selectedEditableElements.map((element) => element.id));
+
+  const handleAlign = (axis: "x" | "y", position: "start" | "center" | "end") => {
     if (selectedEditableElements.length === 0) return;
-    const selectedIds = new Set(selectedEditableElements.map((element) => element.id));
-    const nextElements = alignElements(activeElements, selectedIds, axis, position);
-    if (!elementsChanged(activeElements, nextElements)) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
-    }));
+    const nextElements = alignElements(activeElements, editableIds(), axis, position);
+    if (elementsMoved(activeElements, nextElements)) commitElements(nextElements);
   };
 
-  const handleCenterElementsOnCanvas = (axis: "x" | "y" | "both") => {
+  const handleCenter = () => {
     if (selectedEditableElements.length === 0) return;
-    const selectedIds = new Set(selectedEditableElements.map((element) => element.id));
-    const nextElements = centerElementsOnCanvas(activeElements, selectedIds, axis);
-    if (!elementsChanged(activeElements, nextElements)) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
-    }));
+    const nextElements = centerElementsOnCanvas(activeElements, editableIds());
+    if (elementsMoved(activeElements, nextElements)) commitElements(nextElements);
   };
 
-  const handleDistributeElements = (axis: "x" | "y") => {
+  const handleDistribute = (axis: "x" | "y") => {
     if (selectedEditableElements.length < 3) return;
-    const selectedIds = new Set(selectedEditableElements.map((element) => element.id));
-    const nextElements = distributeElements(activeElements, selectedIds, axis);
-    if (!elementsChanged(activeElements, nextElements)) return;
+    const nextElements = distributeElements(activeElements, editableIds(), axis);
+    if (elementsMoved(activeElements, nextElements)) commitElements(nextElements);
+  };
+
+  const setFaceGroups = (updater: (groups: NonNullable<typeof activeGroups>) => NonNullable<typeof activeGroups>) => {
     commit((preset) => normalizeLoyaltyCardPreset({
       ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, nextElements),
+      designSchema: {
+        ...preset.designSchema,
+        faces: {
+          ...preset.designSchema.faces,
+          [activeFace]: { ...preset.designSchema.faces[activeFace], groups: updater(preset.designSchema.faces[activeFace].groups || []) },
+        },
+      },
     }));
   };
 
   const handleGroupSelected = () => {
     if (selectedElementIds.length < 2) return;
-    const group = {
-      id: `group-${Date.now()}`,
-      name: `Group ${activeGroups.length + 1}`,
-      elementIds: [...selectedElementIds],
-      collapsed: false,
-    };
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: {
-        ...preset.designSchema,
-        faces: {
-          ...preset.designSchema.faces,
-          [activeFace]: {
-            ...preset.designSchema.faces[activeFace],
-            groups: [...(preset.designSchema.faces[activeFace].groups || []), group],
-          },
-        },
-      },
-    }));
+    const selectedIds = new Set(selectedElementIds);
+    setFaceGroups((groups) => [
+      ...groups.map((group) => ({ ...group, elementIds: group.elementIds.filter((id) => !selectedIds.has(id)) })).filter((group) => group.elementIds.length > 1),
+      { id: `group-${Date.now().toString(36)}`, name: `Group ${groups.length + 1}`, elementIds: [...selectedElementIds], collapsed: false },
+    ]);
   };
 
   const handleUngroupSelected = () => {
     if (selectedElementIds.length === 0) return;
     const selectedIds = new Set(selectedElementIds);
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: {
-        ...preset.designSchema,
-        faces: {
-          ...preset.designSchema.faces,
-          [activeFace]: {
-            ...preset.designSchema.faces[activeFace],
-            groups: (preset.designSchema.faces[activeFace].groups || []).filter((group) => !group.elementIds.some((id) => selectedIds.has(id))),
-          },
-        },
-      },
-    }));
+    setFaceGroups((groups) => groups.filter((group) => !group.elementIds.some((id) => selectedIds.has(id))));
   };
 
   const moveSelectedElements = (dx: number, dy: number) => {
     if (selectedEditableElements.length === 0) return;
-    const selectedIds = new Set(selectedEditableElements.map((element) => element.id));
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, activeElements.map((element) => selectedIds.has(element.id)
-        ? { ...element, x: clampNumber(element.x + dx, -element.width, CANVAS_WIDTH), y: clampNumber(element.y + dy, -element.height, CANVAS_HEIGHT) } as LoyaltyCardElement
-        : element)),
-    }));
+    const ids = editableIds();
+    commitElements(activeElements.map((element) => ids.has(element.id)
+      ? { ...element, x: clampNumber(element.x + dx, -element.width, CANVAS_WIDTH), y: clampNumber(element.y + dy, -element.height, CANVAS_HEIGHT) } as LoyaltyCardElement
+      : element));
   };
 
-  const duplicateSelectedElements = () => {
-    if (selectedElementIds.length === 0) return;
-    const selectedIds = new Set(selectedElementIds);
-    const copies = activeElements
-      .filter((element) => selectedIds.has(element.id) && !element.locked)
+  const insertCopies = (sources: LoyaltyCardElement[], suffix: string) => {
+    const stamp = Date.now().toString(36);
+    const copies = sources
       .map((element, index) => ({
         ...structuredClone(element),
-        id: `${element.id}-copy-${Date.now()}-${index}`,
+        id: `${element.id}-${suffix}-${stamp}-${index}`,
+        locked: false,
         x: clampNumber(element.x + 24, -element.width, CANVAS_WIDTH),
         y: clampNumber(element.y + 24, -element.height, CANVAS_HEIGHT),
         zIndex: activeElements.length + index + 1,
       } as LoyaltyCardElement))
       .filter((element) => activeFace === "back" || element.type !== "stampGrid");
-    if (copies.length === 0) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, [...activeElements, ...copies]),
-    }));
+    if (copies.length === 0) return [];
+    commitElements([...activeElements, ...copies]);
     setSelectedElementIds(copies.map((copy) => copy.id));
+    return copies;
+  };
+
+  const duplicateSelectedElements = () => {
+    insertCopies(activeElements.filter((element) => selectedElementIds.includes(element.id) && !element.locked), "copy");
   };
 
   const copySelectedElements = () => {
-    if (selectedElementIds.length === 0) return;
-    const selectedIds = new Set(selectedElementIds);
-    clipboardElementsRef.current = activeElements.filter((element) => selectedIds.has(element.id) && !element.locked).map((element) => structuredClone(element));
+    clipboardElementsRef.current = activeElements.filter((element) => selectedElementIds.includes(element.id) && !element.locked).map((element) => structuredClone(element));
   };
 
   const pasteCopiedElements = () => {
-    if (clipboardElementsRef.current.length === 0) return;
-    const timestamp = Date.now();
-    const copies = clipboardElementsRef.current.map((element, index) => ({
-      ...structuredClone(element),
-      id: `${element.id}-paste-${timestamp}-${index}`,
-      x: clampNumber(element.x + 24, -element.width, CANVAS_WIDTH),
-      y: clampNumber(element.y + 24, -element.height, CANVAS_HEIGHT),
-      zIndex: activeElements.length + index + 1,
-    } as LoyaltyCardElement)).filter((element) => activeFace === "back" || element.type !== "stampGrid");
-    if (copies.length === 0) return;
-    commit((preset) => normalizeLoyaltyCardPreset({
-      ...preset,
-      designSchema: withFace(preset.designSchema, activeFace, [...activeElements, ...copies]),
-    }));
-    clipboardElementsRef.current = copies.map((copy) => structuredClone(copy));
-    setSelectedElementIds(copies.map((copy) => copy.id));
+    const copies = insertCopies(clipboardElementsRef.current, "paste");
+    if (copies.length) clipboardElementsRef.current = copies.map((copy) => structuredClone(copy));
   };
 
+  const toggleSelectionLock = () => {
+    if (selectedElements.length === 0) return;
+    const lock = selectedElements.some((element) => !element.locked);
+    const ids = new Set(selectedElements.map((element) => element.id));
+    commitElements(activeElements.map((element) => ids.has(element.id) ? { ...element, locked: lock } as LoyaltyCardElement : element));
+  };
+
+  const updateBackground = (update: BackgroundUpdate) => {
+    commit((preset) => {
+      const current = preset.designSchema.faces[activeFace]?.background;
+      const background = typeof update === "function" ? (current ? update(current) : null) : update;
+      if (!background) return preset;
+      return {
+        ...preset,
+        designSchema: {
+          ...preset.designSchema,
+          faces: { ...preset.designSchema.faces, [activeFace]: { ...preset.designSchema.faces[activeFace], background } },
+        },
+      };
+    });
+  };
+
+  const applyColor = (hex: string) => {
+    const color = parseColor(hex).hex;
+    const targets = selectedElements.filter((element) => !element.locked);
+    if (targets.length === 0) {
+      if (selectedElements.length > 0 || !activeBackground) return;
+      if (activeBackground.type === "gradient") updateBackground({ ...activeBackground, colors: [color, ...activeBackground.colors.slice(1)] });
+      else updateBackground({ ...activeBackground, color });
+      return;
+    }
+    const ids = new Set(targets.map((element) => element.id));
+    commitElements(activeElements.map((element) => {
+      if (!ids.has(element.id)) return element;
+      if (element.type === "text") return { ...element, color };
+      if (element.type === "shape") return { ...element, fill: color };
+      if (element.type === "line") return { ...element, color };
+      if (element.type === "stampGrid") return { ...element, filledFill: color };
+      return { ...element, tint: color };
+    }));
+  };
+
+  /* ----- fonts ----- */
+
+  const updateText = typedUpdater("text");
+  const textWeightOptions = selectedElement?.type === "text" ? getAvailableTextWeights(fontGroups, selectedElement) : [];
+  const textWeight = selectedElement?.type === "text" ? selectedTextWeight(selectedElement, textWeightOptions) : 400;
+  const textStyleOptions = selectedElement?.type === "text" ? getAvailableTextStyles(fontGroups, selectedElement) : ["normal" as const];
+  const textStyle = selectedElement?.type === "text" ? selectedTextStyle(selectedElement, textStyleOptions) : "normal";
+
+  /* ----- library ----- */
+
+  const stampTargetGrid = selectedElement?.type === "stampGrid" ? selectedElement : selectedElementIds.length === 0 && activeFace === "back" ? activeElements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid") || null : null;
+  const stampMode = Boolean(stampTargetGrid && !stampTargetGrid.locked);
+  const filledUrlsOf = (grid: LoyaltyCardStampGridElement) => Array.from(new Set([...(grid.filledImageUrls || []), grid.filledImageUrl || ""].filter(Boolean)));
+  const libraryActiveUrls = stampMode && stampTargetGrid ? (libraryTarget === "empty" ? [stampTargetGrid.emptyImageUrl || ""].filter(Boolean) : filledUrlsOf(stampTargetGrid)) : [];
+
+  const handleLibraryPick = (asset: LoyaltyCardEditorLibraryAsset, kind: LibraryKind) => {
+    if (stampMode && stampTargetGrid && kind !== "patterns") {
+      updateLayerElement(stampTargetGrid.id, (element) => {
+        if (element.type !== "stampGrid") return element;
+        if (libraryTarget === "empty") return { ...element, emptyMode: "image", emptyImageUrl: asset.cdnUrl };
+        const currentUrls = filledUrlsOf(element);
+        const nextUrls = currentUrls.includes(asset.cdnUrl) ? currentUrls.filter((url) => url !== asset.cdnUrl) : currentUrls.length < MAX_FILLED_STAMP_PRESETS ? [...currentUrls, asset.cdnUrl] : currentUrls;
+        return { ...element, filledMode: nextUrls.length ? "image" : "shape", filledImageUrl: nextUrls[0] || "", filledImageUrls: nextUrls };
+      });
+      setSelectedElementIds([stampTargetGrid.id]);
+      setStampTab("stamps");
+      return;
+    }
+    if (kind === "stamps") return;
+    handleAddElement("asset", { imageUrl: asset.cdnUrl });
+  };
+
+  const openLibraryFor = (target: StampTarget) => {
+    setLibraryTarget(target);
+    setLeftTab("library");
+  };
+
+  /* ----- keyboard ----- */
+
   useEffect(() => {
+    // Shortcuts stay with text fields; sliders, switches and colour pickers pass them to the editor.
+    const NON_TEXT_INPUTS = new Set(["range", "checkbox", "radio", "color", "button", "submit", "file"]);
     const isEditableTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
       const tagName = target.tagName.toLowerCase();
-      return tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable;
+      if (tagName === "input") return !NON_TEXT_INPUTS.has((target as HTMLInputElement).type);
+      return tagName === "textarea" || tagName === "select" || target.isContentEditable;
     };
-
+    // Sliders, switches and colour pickers keep their own arrow and Delete keys; Ctrl/Cmd shortcuts still reach the editor.
+    const isNativeControl = (target: EventTarget | null) => target instanceof HTMLInputElement && NON_TEXT_INPUTS.has(target.type);
+    // Any open dialog (Preview, an upload dialog, or one of the host's) keeps shortcuts away from the canvas.
+    const isDialogOpen = () => typeof document !== "undefined" && Boolean(document.querySelector('[aria-modal="true"]'));
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       const isModifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
-
       if (isModifier && key === "s") {
         event.preventDefault();
-        onSave?.();
+        if (!isSaving) (onSave || onSaveDraft)?.();
         return;
       }
-
-      if (isEditableTarget(event.target)) return;
-
+      if (isEditableTarget(event.target) || previewOpen || fontUploadOpen || isDialogOpen()) return;
       if (!isModifier && event.shiftKey && key === "s") {
         event.preventDefault();
         setSnapEnabled((current) => !current);
         return;
       }
-
       if (isModifier && key === "z") {
         event.preventDefault();
         if (event.shiftKey) handleRedo();
         else handleUndo();
         return;
       }
-
       if (isModifier && key === "y") {
         event.preventDefault();
         handleRedo();
         return;
       }
-
       if (isModifier && key === "c") {
         event.preventDefault();
         copySelectedElements();
         return;
       }
-
       if (isModifier && key === "v") {
         event.preventDefault();
         pasteCopiedElements();
         return;
       }
-
       if (event.key === "Escape") {
-        event.preventDefault();
         if (inspectorPane !== "properties") setInspectorPane("properties");
         else setSelectedElementIds([]);
         return;
       }
-
+      if ((event.key === "Delete" || event.key === "Backspace" || event.key.startsWith("Arrow")) && isNativeControl(event.target)) return;
       if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedElementIds.length === 0) return;
         event.preventDefault();
         handleDeleteElement();
         return;
       }
-
       if (event.key.startsWith("Arrow")) {
+        if (selectedElementIds.length === 0) return;
         event.preventDefault();
         const step = event.shiftKey ? 10 : 1;
         if (event.key === "ArrowLeft") moveSelectedElements(-step, 0);
@@ -1858,545 +848,539 @@ export function LoyaltyCardEditor({
         if (event.key === "ArrowDown") moveSelectedElements(0, step);
         return;
       }
-
       if (isModifier && key === "d") {
         event.preventDefault();
         duplicateSelectedElements();
         return;
       }
-
       if (isModifier && key === "g") {
         event.preventDefault();
         if (event.shiftKey) handleUngroupSelected();
         else handleGroupSelected();
         return;
       }
-
       if (isModifier && event.key === "]") {
         event.preventDefault();
         handleLayerStep("up");
         return;
       }
-
       if (isModifier && event.key === "[") {
         event.preventDefault();
         handleLayerStep("down");
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeElements, activeFace, inspectorPane, selectedElementIds, value]);
+  }, [activeElements, activeFace, inspectorPane, selectedElementIds, value, previewOpen, fontUploadOpen, onSave, onSaveDraft, isSaving]);
 
-  const selectedTextWeightOptions = selectedElement?.type === "text" ? getAvailableTextWeights(selectedElement) : fontWeights;
-  const selectedTextWeight = selectedElement?.type === "text" ? getSelectedTextFontWeight(selectedElement, selectedTextWeightOptions) : 700;
-  const selectedTextStyleOptions: Array<"normal" | "italic"> = selectedElement?.type === "text" ? getAvailableTextStyles(selectedElement) : ["normal"];
-  const selectedTextStyle: "normal" | "italic" = selectedElement?.type === "text" ? getSelectedTextFontStyle(selectedElement, selectedTextStyleOptions) : "normal";
+  /* ----- zoom ----- */
+
+  const availableWidth = Math.max(160, stageSize.width - 72);
+  const availableHeight = Math.max(90, stageSize.height - 84 - 108);
+  const fitWidth = Math.max(160, Math.min(availableWidth, availableHeight * (16 / 9)));
+  const fitPercent = Math.max(10, Math.floor((fitWidth / BASE_CARD_WIDTH) * 100));
+  const zoomPercent = zoom === "fit" ? fitPercent : zoom === "auto" ? Math.min(100, fitPercent) : zoom;
+  const cardWidth = Math.round((BASE_CARD_WIDTH * zoomPercent) / 100);
+  const stepZoom = (direction: 1 | -1) => {
+    const next = direction > 0 ? ZOOM_STEPS.find((step) => step > zoomPercent) : [...ZOOM_STEPS].reverse().find((step) => step < zoomPercent);
+    if (next) setZoom(next);
+  };
+
+  /* ----- derived labels ----- */
+
+  const statusLabel = STATUS_LABELS[record.status] || record.status;
+  const showStatus = showPresetDetails || Boolean(onPublish);
+  const saveText = isSaving ? "Saving…" : hasUnsavedChanges ? "Unsaved changes" : savedAt ? `Changes saved ${formatRelativeTime(savedAt, now)}` : "";
+  const subtitleParts = [showPresetDetails ? categoryLabel(record.category) : title && title !== record.name ? title : "", saveText].filter(Boolean);
+  const faceColors = collectFaceColors(activeBackground, activeElements);
+  const canUndo = undoStackRef.current.some((entry) => recordKey(entry) !== recordKey(value));
+  const canRedo = redoStackRef.current.some((entry) => recordKey(entry) !== recordKey(value));
+  const hasSelection = selectedElementIds.length > 0;
+  const selectionLocked = selectedElements.length > 0 && selectedElements.every((element) => element.locked);
+  const layersTopFirst = activeElements.map((element, index) => ({ element, index })).sort((a, b) => b.element.zIndex - a.element.zIndex || a.index - b.index).map(({ element }) => element);
+  const stampsCollectedSample = Number(editorTokens.stampsCollected ?? 0);
+  const stampsRequiredSample = Number(editorTokens.stampsRequired ?? 10);
+
+  const cardFieldChips: Array<{ id: string; label: string; icon: IconType; token: string; fallback: string; name: string }> = [
+    { id: "venue", label: "Venue name", icon: Store01Icon, token: "{{venueName}}", fallback: "Your café", name: "Venue name" },
+    { id: "tier", label: "Tier", icon: StarSquareIcon, token: "{{tierName}}", fallback: "Member", name: "Tier" },
+    { id: "reward", label: "Reward", icon: GiftIcon, token: "{{rewardTitle}}", fallback: "Free coffee", name: "Reward" },
+    { id: "reward-details", label: "Reward details", icon: Note01Icon, token: "{{rewardDescription}}", fallback: "Enjoy this reward on your next visit.", name: "Reward details" },
+    { id: "progress", label: `Stamps ${stampsCollectedSample}/${stampsRequiredSample}`, icon: StampIcon, token: "{{stampsCollected}}/{{stampsRequired}}", fallback: "", name: "Progress" },
+    { id: "total", label: "Stamp total", icon: Ticket01Icon, token: "{{stampsRequired}}", fallback: "10", name: "Stamp total" },
+  ];
+
+  const moreItems: MenuItem[] = [
+    ...menuActions.map((action) => ({ id: action.id, label: action.label, icon: action.icon, onSelect: action.onSelect, disabled: action.disabled, danger: action.danger })),
+    ...(menuActions.length ? [{ id: "divider-theme", divider: true as const }] : []),
+    { id: "theme", label: editorTheme === "light" ? "Dark editor" : "Light editor", icon: editorTheme === "light" ? Moon02Icon : Sun03Icon, onSelect: () => setEditorTheme((current) => current === "light" ? "dark" : "light") },
+  ];
+
+  const orderItems: MenuItem[] = [
+    { id: "front", label: "Bring to front", icon: LayerBringToFrontIcon, disabled: !selectedElement || Boolean(selectedElement.locked), onSelect: () => handleLayerEdge("front") },
+    { id: "forward", label: "Bring forward", icon: LayerBringForwardIcon, disabled: !selectedElement || Boolean(selectedElement.locked), onSelect: () => handleLayerStep("up") },
+    { id: "backward", label: "Send backward", icon: LayerSendBackwardIcon, disabled: !selectedElement || Boolean(selectedElement.locked), onSelect: () => handleLayerStep("down") },
+    { id: "back", label: "Send to back", icon: LayerSendToBackIcon, disabled: !selectedElement || Boolean(selectedElement.locked), onSelect: () => handleLayerEdge("back") },
+    { id: "divider-arrange", divider: true },
+    { id: "center", label: "Centre on the card", icon: CenterFocusIcon, disabled: selectedEditableElements.length === 0, onSelect: handleCenter },
+    { id: "distribute-x", label: "Space evenly across", icon: DistributeHorizontalCenterIcon, disabled: selectedEditableElements.length < 3, onSelect: () => handleDistribute("x") },
+    { id: "distribute-y", label: "Space evenly down", icon: DistributeVerticalCenterIcon, disabled: selectedEditableElements.length < 3, onSelect: () => handleDistribute("y") },
+    { id: "divider-group", divider: true },
+    { id: "group", label: "Group", icon: Layers01Icon, disabled: selectedElementIds.length < 2, onSelect: handleGroupSelected },
+    { id: "ungroup", label: "Ungroup", disabled: selectedGroupIds.length === 0, onSelect: handleUngroupSelected },
+  ];
+
+  const renderSelectionTag = (element: LoyaltyCardElement) => {
+    if (element.type === "text") {
+      const tag = textFieldTag(element);
+      return tag ? <><Icon icon={BracesIcon} size={11} />{tag}</> : null;
+    }
+    if (element.type === "stampGrid") return <><Icon icon={StampIcon} size={11} />Stamp grid · {resolveStampGridCount(element)}</>;
+    return null;
+  };
+
+  /* ----- inspector ----- */
+
+  const renderInspector = () => {
+    if (inspectorPane === "fontPicker" && selectedElement?.type === "text") {
+      return (
+        <FontPickerPanel
+          element={selectedElement}
+          groups={fontGroups}
+          onClose={() => setInspectorPane("properties")}
+          onPickCatalog={(font) => {
+            updateText((element) => applyCatalogFontToText(element, font));
+            setInspectorPane("properties");
+          }}
+          onPickUploaded={(group) => {
+            const font = chooseUploadedFontVariant(group, textWeight, textStyle);
+            if (!font || !getUploadedFontUrl(font)) return;
+            updateText((element) => applyUploadedFontToText(element, font, textWeight));
+            setInspectorPane("properties");
+          }}
+        />
+      );
+    }
+
+    if (selectedElementIds.length > 1) {
+      return (
+        <>
+          <InspectorHeader icon={Layers01Icon} title={`${selectedElementIds.length} items selected`} subtitle={selectedGroupIds.length ? "Grouped items move together" : "Drag any of them to move them together"} />
+          <div className="lce-inspector__sections">
+            <MultiSelectionBody count={selectedElementIds.length} editableCount={selectedEditableElements.length} canUngroup={selectedGroupIds.length > 0} onAlign={handleAlign} onDistribute={handleDistribute} onCenter={handleCenter} onGroup={handleGroupSelected} onUngroup={handleUngroupSelected} onDelete={handleDeleteElement} />
+          </div>
+        </>
+      );
+    }
+
+    if (selectedElement) {
+      const header = selectedElement.type === "text" ? textHeader(selectedElement)
+        : selectedElement.type === "stampGrid" ? stampGridHeader(selectedElement)
+          : selectedElement.type === "asset" ? imageHeader(selectedElement)
+            : selectedElement.type === "shape" ? shapeHeader(selectedElement)
+              : lineHeader(selectedElement);
+      const toggleHidden = () => updateLayerElement(selectedElement.id, (element) => ({ ...element, hidden: !element.hidden }));
+      const toggleLocked = () => updateLayerElement(selectedElement.id, (element) => ({ ...element, locked: !element.locked }));
+      return (
+        <>
+          <InspectorHeader icon={header.icon} title={header.title} subtitle={header.subtitle} element={selectedElement} onToggleHidden={toggleHidden} onToggleLocked={toggleLocked}>
+            {selectedElement.type === "stampGrid" ? <StampGridTabs tab={stampTab} onChange={setStampTab} /> : null}
+          </InspectorHeader>
+          <div className="lce-inspector__sections">
+            {selectedElement.locked ? <LockedNotice onUnlock={toggleLocked} /> : null}
+            <fieldset className="lce-fieldset" disabled={Boolean(selectedElement.locked)}>
+              {selectedElement.type === "text" ? (
+                <TextInspectorBody
+                  element={selectedElement}
+                  update={updateText}
+                  tokens={editorTokens}
+                  weightOptions={textWeightOptions}
+                  weight={textWeight}
+                  styleOptions={textStyleOptions}
+                  style={textStyle}
+                  onVariantChange={(weight, style) => updateText((element) => applyTextVariant(fontGroups, element, weight, style) as LoyaltyCardTextElement)}
+                  onOpenFontPicker={() => setInspectorPane("fontPicker")}
+                />
+              ) : null}
+              {selectedElement.type === "stampGrid" ? (
+                <StampGridInspectorBody
+                  element={selectedElement}
+                  update={typedUpdater("stampGrid")}
+                  tab={stampTab}
+                  preview={preview}
+                  effectivePreviewCount={effectivePreviewCount}
+                  onPreviewChange={setPreview}
+                  onPlay={() => setReplayKey((key) => key + 1)}
+                  onOpenLibrary={openLibraryFor}
+                  face={activeFace}
+                  onUploadImage={onUploadImage as UploadImageHandler | undefined}
+                  onImportImageUrl={onImportImageUrl as ImportImageHandler | undefined}
+                />
+              ) : null}
+              {selectedElement.type === "asset" ? <ImageInspectorBody element={selectedElement} update={typedUpdater("asset")} face={activeFace} onUploadImage={onUploadImage as UploadImageHandler | undefined} onImportImageUrl={onImportImageUrl as ImportImageHandler | undefined} /> : null}
+              {selectedElement.type === "shape" ? <ShapeInspectorBody element={selectedElement} update={typedUpdater("shape")} /> : null}
+              {selectedElement.type === "line" ? <LineInspectorBody element={selectedElement} update={typedUpdater("line")} /> : null}
+              {selectedElement.type !== "stampGrid" || stampTab === "layout" ? (
+                <>
+                  <PositionSection element={selectedElement} update={updateSelectedElement} />
+                  <OpacitySection element={selectedElement} update={updateSelectedElement} />
+                </>
+              ) : null}
+            </fieldset>
+          </div>
+        </>
+      );
+    }
+
+    const header = cardSettingsHeader();
+    return (
+      <>
+        <InspectorHeader icon={header.icon} title={header.title} subtitle={header.subtitle} tone="ink" />
+        <div className="lce-inspector__sections">
+          <CardSettingsBody
+            record={record}
+            commit={commit}
+            face={activeFace}
+            background={activeBackground}
+            onBackgroundChange={updateBackground}
+            showPresetDetails={showPresetDetails}
+            meta={renderMeta ? renderMeta({ record: value, update: (updater) => commit(updater) }) : null}
+            sample={sample}
+            onSampleChange={setSample}
+            previewCount={effectivePreviewCount}
+            previewTotal={previewTotal}
+            hasStampGrid={Boolean(previewGrid)}
+            onPreviewCountChange={(count) => setPreview({ mode: "manual", count })}
+            onUploadImage={onUploadImage as UploadImageHandler | undefined}
+            onImportImageUrl={onImportImageUrl as ImportImageHandler | undefined}
+          />
+        </div>
+      </>
+    );
+  };
+
+  /* ----- left panel ----- */
+
+  const renderAddPanel = () => (
+    <div className="lce-panel-body">
+      <section className="lce-panel-section">
+        <span className="lce-section__label">Text</span>
+        {TEXT_PRESETS.map((preset) => (
+          <button key={preset.id} type="button" className={cx("lce-text-preset", `lce-text-preset--${preset.id}`)} onClick={() => handleAddElement("text", { textPreset: preset.id })}>
+            <span>{preset.label}</span>
+            <Icon icon={Add01Icon} size={16} />
+          </button>
+        ))}
+      </section>
+      <section className="lce-panel-section">
+        <div className="lce-section__header">
+          <span className="lce-section__label">Card fields</span>
+          <span className="lce-hint-inline">Fill in per venue</span>
+        </div>
+        <div className="lce-field-chips">
+          {cardFieldChips.map((chip) => (
+            <button key={chip.id} type="button" className="lce-field-chip" title={`Add ${chip.name.toLowerCase()} text`} onClick={() => handleAddElement("text", { textPreset: chip.id === "reward-details" ? "body" : "subheading", token: chip.token, fallbackText: chip.fallback, name: chip.name })}>
+              <Icon icon={chip.icon} size={14} />
+              <span>{chip.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="lce-panel-section">
+        <span className="lce-section__label">Shapes and media</span>
+        <div className="lce-tiles-3">
+          <Tile icon={SquareIcon} label="Rectangle" onClick={() => handleAddElement("shape", { shape: "rect" })} />
+          <Tile icon={CircleIcon} label="Circle" onClick={() => handleAddElement("shape", { shape: "circle" })} />
+          <Tile icon={ShapesIcon} label="Blob" onClick={() => handleAddElement("shape", { shape: "blob" })} />
+          <Tile icon={MinusSignIcon} label="Line" onClick={() => handleAddElement("line")} />
+          <Tile icon={Image01Icon} label="Image" onClick={() => handleAddElement("asset")} />
+          <Tile icon={StampIcon} label="Stamps" disabled={activeFace !== "back" || !faceKeys.includes("back")} title={activeFace !== "back" ? "Stamps go on the back of the card" : "Add a stamp grid"} onClick={() => handleAddElement("stampGrid")} />
+        </div>
+        {activeFace !== "back" ? <p className="lce-hint lce-hint--icon"><Icon icon={InformationCircleIcon} size={14} />Stamps go on the back of the card.</p> : null}
+      </section>
+      <section className="lce-panel-section">
+        <span className="lce-section__label">Colours in this card</span>
+        <div className="lce-swatches">
+          {faceColors.map((color) => <button key={color} type="button" className="lce-swatch" style={{ background: color }} aria-label={`Use ${color}`} title={color} onClick={() => applyColor(color)} />)}
+          <span className="lce-swatch lce-swatch--add">
+            <Icon icon={PlusSignIcon} size={14} />
+            <input ref={colorInputRef} type="color" aria-label="Pick another colour" onChange={(event) => applyColor(event.target.value)} />
+          </span>
+        </div>
+        <p className="lce-hint">{hasSelection ? "Click a colour to use it on the selected item." : "Click a colour to use it as the background, or select an item first."}</p>
+      </section>
+    </div>
+  );
+
+  const renderLayersPanel = () => (
+    <div className="lce-panel-body">
+      <div className="lce-section__header">
+        <span className="lce-section__label">{FACE_SIDE_LABELS[activeFace]}</span>
+        <span className="lce-hint-inline">{activeElements.length} layer{activeElements.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="lce-layers" role="list">
+        {layersTopFirst.map((element) => {
+          const label = elementLabel(element, editorTokens);
+          const selected = selectedElementIds.includes(element.id);
+          const renaming = renamingLayerId === element.id;
+          return (
+            <div
+              key={element.id}
+              role="listitem"
+              className={cx("lce-layer", selected && "lce-layer--active", element.hidden && "lce-layer--hidden", draggedLayerId === element.id && "lce-layer--dragging")}
+              draggable={!element.locked && !renaming}
+              onClick={(event) => handleSelectElement(element.id, event.shiftKey, event.altKey)}
+              onDragStart={(event) => {
+                if (element.locked) return;
+                setDraggedLayerId(element.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                handleLayerDrop(element.id);
+              }}
+              onDragEnd={() => setDraggedLayerId(null)}
+            >
+              <span className="lce-layer__grip" aria-hidden="true" title={element.locked ? "Unlock to reorder" : "Drag to reorder"}><Icon icon={DragDropVerticalIcon} size={14} /></span>
+              <span className="lce-layer__well"><Icon icon={elementIcon(element)} size={15} /></span>
+              {renaming ? (
+                <span className="lce-layer__text">
+                  <input
+                    className="lce-layer__rename"
+                    autoFocus
+                    defaultValue={element.name || label}
+                    aria-label={`Rename ${label}`}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === "Escape") restoreLayerFocusRef.current = element.id;
+                      if (event.key === "Enter") event.currentTarget.blur();
+                      if (event.key === "Escape") setRenamingLayerId(null);
+                      event.stopPropagation();
+                    }}
+                    onBlur={(event) => {
+                      const name = event.currentTarget.value.trim();
+                      setRenamingLayerId(null);
+                      if (name === (element.name || "") || (!element.name && name === label)) return;
+                      updateLayerElement(element.id, (current) => ({ ...current, name }));
+                    }}
+                  />
+                  <small>{elementSubtitle(element, editorTokens)}</small>
+                </span>
+              ) : (
+                // A span with button behaviour rather than a <button>: Firefox won't start a drag on a button.
+                <span
+                  ref={(node) => {
+                    if (node && restoreLayerFocusRef.current === element.id) {
+                      restoreLayerFocusRef.current = null;
+                      node.focus();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className="lce-layer__text lce-layer__select"
+                  aria-pressed={selected}
+                  title="Double-click or press F2 to rename"
+                  onDoubleClick={(event) => { event.stopPropagation(); setRenamingLayerId(element.id); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "F2") {
+                      event.preventDefault();
+                      setRenamingLayerId(element.id);
+                    } else if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelectElement(element.id, event.shiftKey, event.altKey);
+                    }
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <small>{elementSubtitle(element, editorTokens)}</small>
+                </span>
+              )}
+              <button type="button" className="lce-layer__action" aria-label={element.hidden ? `Show ${label}` : `Hide ${label}`} title={element.hidden ? "Show" : "Hide"} aria-pressed={Boolean(element.hidden)} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, hidden: !current.hidden })); }}>
+                <Icon icon={element.hidden ? ViewOffSlashIcon : ViewIcon} size={15} />
+              </button>
+              <button type="button" className={cx("lce-layer__action", element.locked && "lce-layer__action--on")} aria-label={element.locked ? `Unlock ${label}` : `Lock ${label}`} title={element.locked ? "Unlock" : "Lock"} aria-pressed={Boolean(element.locked)} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, locked: !current.locked })); }}>
+                <Icon icon={element.locked ? LockKeyIcon : SquareUnlock01Icon} size={15} />
+              </button>
+            </div>
+          );
+        })}
+        <div role="listitem" className={cx("lce-layer", "lce-layer--background", selectedElementIds.length === 0 && "lce-layer--current")} onClick={() => setSelectedElementIds([])}>
+          <span className="lce-layer__grip" aria-hidden="true" />
+          <span className="lce-layer__swatch" style={backgroundSwatch(activeBackground)} aria-hidden="true" />
+          <span
+            role="button"
+            tabIndex={0}
+            className="lce-layer__text lce-layer__select"
+            aria-pressed={selectedElementIds.length === 0}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              setSelectedElementIds([]);
+            }}
+          >
+            <strong>Background</strong>
+            <small>{backgroundSummary(activeBackground)}</small>
+          </span>
+          <span className="lce-layer__action lce-layer__action--static" title="The background always stays at the bottom"><Icon icon={LockKeyIcon} size={15} /></span>
+        </div>
+      </div>
+      <p className="lce-hint lce-hint--box"><Icon icon={InformationCircleIcon} size={14} />Drag to change the order. Shift-click two layers to select both, then group them. Double-click a name, or press F2, to rename it.</p>
+    </div>
+  );
+
+  const renderLibraryPanel = () => (
+    <LibraryPanel
+      assets={assetLibrary}
+      target={libraryTarget}
+      onTargetChange={setLibraryTarget}
+      stampMode={stampMode}
+      activeUrls={libraryActiveUrls}
+      onPick={handleLibraryPick}
+      onUpload={onUploadLibraryAsset as UploadLibraryAssetHandler | undefined}
+      onArchive={onArchiveLibraryAsset}
+      onRestore={onRestoreLibraryAsset}
+      onDelete={onDeleteLibraryAsset}
+      fontsSection={(
+        <LibraryFontsSection onUpload={onUploadFont ? () => setFontUploadOpen(true) : undefined}>
+          <UploadedFontsList groups={fontGroups} onArchive={onArchiveFont} onDelete={onDeleteFont} />
+        </LibraryFontsSection>
+      )}
+    />
+  );
+
+  /* ----- render ----- */
 
   return (
-    <div className={`loyalty-studio-page loyalty-studio-page--theme-${editorTheme}`}>
-      <header className="loyalty-studio-topbar">
-        <div>
-          <h1>{title}</h1>
+    <div className={cx("loyalty-studio-page", `loyalty-studio-page--theme-${editorTheme}`, "lce-root")} aria-label={title}>
+      <header className="lce-topbar">
+        <div className="lce-topbar__left">
+          {onBack ? <IconButton icon={ArrowLeft01Icon} label={backLabel} variant="outline" size="lg" onClick={onBack} /> : null}
+          <div className="lce-topbar__titles">
+            <div className="lce-topbar__name">
+              <h1>{record.name || title}</h1>
+              {showStatus ? <span className={cx("lce-status", `lce-status--${record.status}`)}>{statusLabel}</span> : null}
+            </div>
+            {subtitleParts.length ? <p>{subtitleParts.join(" · ")}</p> : null}
+          </div>
         </div>
-        <div className="loyalty-studio-topbar-controls">
-          <FontUpload onUpload={onUploadFont} />
-          <button
-            type="button"
-            className="loyalty-theme-toggle"
-            aria-label={`Switch to ${editorTheme === "light" ? "dark" : "light"} editor theme`}
-            title={`Switch to ${editorTheme === "light" ? "dark" : "light"} editor theme`}
-            onClick={() => setEditorTheme((current) => current === "light" ? "dark" : "light")}
-          >
-            <HugeiconsIcon icon={editorTheme === "light" ? Moon02Icon : Sun02Icon} size={16} strokeWidth={1.9} aria-hidden="true" />
-            <span>{editorTheme === "light" ? "Dark" : "Light"}</span>
-          </button>
-          <div className="loyalty-studio-actions">{actions}</div>
+        <div className="lce-topbar__right">
+          <IconButton icon={Undo02Icon} label="Undo (Ctrl+Z)" variant="outline" size="lg" disabled={!canUndo} onClick={handleUndo} />
+          <IconButton icon={Redo02Icon} label="Redo (Ctrl+Shift+Z)" variant="outline" size="lg" disabled={!canRedo} onClick={handleRedo} />
+          <span className="lce-topbar__divider" aria-hidden="true" />
+          <button type="button" className="lce-button" onClick={() => { setPreviewFace(activeFace); setPreviewOpen(true); }}><Icon icon={PlayIcon} size={16} />Preview</button>
+          <span className="lce-menu-anchor">
+            <IconButton icon={MoreHorizontalIcon} label="More actions" variant="outline" size="lg" onClick={() => setMoreMenuOpen((open) => !open)} />
+            {moreMenuOpen ? <Menu label="More actions" items={moreItems} onClose={() => setMoreMenuOpen(false)} /> : null}
+          </span>
+          {actions || onSaveDraft || onPublish ? <span className="lce-topbar__divider" aria-hidden="true" /> : null}
+          {actions ? <div className="lce-topbar__actions">{actions}</div> : null}
+          {onSaveDraft ? <button type="button" className="lce-button" disabled={isSaving} onClick={onSaveDraft}>{saveDraftLabel}</button> : null}
+          {onPublish ? <button type="button" className="lce-button lce-button--ink" disabled={isSaving} onClick={onPublish}>{publishLabel}</button> : null}
         </div>
       </header>
 
-      {error ? <div className="loyalty-inspector-empty">{error}</div> : null}
-      {toast ? <div className="loyalty-studio-toast" role="status" aria-live="polite">{toast}</div> : null}
+      {error ? <div className="lce-banner" role="alert"><Icon icon={InformationCircleIcon} size={16} />{error}</div> : null}
+      {toast ? <div className="lce-toast" role="status" aria-live="polite">{toast}</div> : null}
 
-      <div className="loyalty-studio-shell">
-        <aside className="loyalty-studio-sidebar" aria-label="Editor sidebar">
-          {showStampPresetPanel ? (
-            <div className="loyalty-studio-tab-panel" role="tabpanel" aria-label="Stamp presets">
-              <div className="loyalty-studio-panel-header">
-                <span>Stamp presets</span>
-                <strong>{emptyStampAssets.length + filledStampAssets.length}</strong>
-              </div>
-              <LibraryAssetUpload onUpload={onUploadLibraryAsset} />
-              <div className="loyalty-stamp-preset-tabs" role="tablist" aria-label="Stamp preset type">
-                <button type="button" role="tab" aria-selected={stampPresetTab === "empty"} className={stampPresetTab === "empty" ? "loyalty-stamp-preset-tabs__button loyalty-stamp-preset-tabs__button--active" : "loyalty-stamp-preset-tabs__button"} onClick={() => setStampPresetTab("empty")}>Empty</button>
-                <button type="button" role="tab" aria-selected={stampPresetTab === "filled"} className={stampPresetTab === "filled" ? "loyalty-stamp-preset-tabs__button loyalty-stamp-preset-tabs__button--active" : "loyalty-stamp-preset-tabs__button"} onClick={() => setStampPresetTab("filled")}>Filled</button>
-              </div>
-              <div className="loyalty-studio-insert-section" role="tabpanel" aria-label={stampPresetTab === "empty" ? "Empty stamp presets" : "Filled stamp presets"}>
-                <div className="loyalty-stamp-preset-section-heading">
-                  <span>{stampPresetTab === "empty" ? "Empty stamp" : `Filled stamp${selectedElement?.type === "stampGrid" ? ` (${Array.from(new Set([...(selectedElement.filledImageUrls || []), selectedElement.filledImageUrl || ""].filter(Boolean))).length}/${MAX_FILLED_STAMP_PRESETS})` : ""}`}</span>
-                  {onArchiveLibraryAsset && hasArchivedStampAssets ? <button type="button" className={showArchivedForActiveStampTab ? "loyalty-archived-toggle loyalty-archived-toggle--active" : "loyalty-archived-toggle"} aria-pressed={showArchivedForActiveStampTab} onClick={() => setShowArchivedAssets((current) => !current)}>Show archived</button> : null}
-                </div>
-                <div className="loyalty-asset-library-grid">
-                  {stampPresetTab === "empty" ? (
-                    <>
-                      {visibleEmptyStampAssets.map((asset) => <LibraryAssetCard key={asset.id} asset={asset} isActive={selectedElement?.type === "stampGrid" && selectedElement.emptyImageUrl === asset.cdnUrl} onSelect={applyEmptyStampPreset} onArchive={onArchiveLibraryAsset} onRestore={onRestoreLibraryAsset} onDelete={onDeleteLibraryAsset} />)}
-                      {!showArchivedForActiveStampTab && selectedElement?.type === "stampGrid" && selectedElement.emptyImageUrl ? <button type="button" className="loyalty-stamp-reset-button" onClick={() => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: "shape", emptyImageUrl: "" } : element)}>Use shape style</button> : null}
-                      {visibleEmptyStampAssets.length === 0 ? <div className="loyalty-inspector-empty">{showArchivedForActiveStampTab ? "No archived empty stamp presets." : "No empty stamp presets yet."}</div> : null}
-                    </>
-                  ) : (
-                    <>
-                      {visibleFilledStampAssets.map((asset) => <LibraryAssetCard key={asset.id} asset={asset} isActive={selectedElement?.type === "stampGrid" && Array.from(new Set([...(selectedElement.filledImageUrls || []), selectedElement.filledImageUrl || ""].filter(Boolean))).includes(asset.cdnUrl)} onSelect={applyFilledStampPreset} onArchive={onArchiveLibraryAsset} onRestore={onRestoreLibraryAsset} onDelete={onDeleteLibraryAsset} />)}
-                      {!showArchivedForActiveStampTab && selectedElement?.type === "stampGrid" && (selectedElement.filledImageUrl || selectedElement.filledImageUrls?.length) ? <button type="button" className="loyalty-stamp-reset-button" onClick={() => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: "shape", filledImageUrl: "", filledImageUrls: [] } : element)}>Use shape style</button> : null}
-                      {visibleFilledStampAssets.length === 0 ? <div className="loyalty-inspector-empty">{showArchivedForActiveStampTab ? "No archived filled stamp presets." : "No filled stamp presets yet."}</div> : null}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="loyalty-studio-tabs" role="tablist" aria-label="Editor sidebar tabs">
-                <button className={leftPanelTab === "tools" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "tools"} onClick={() => setLeftPanelTab("tools")}>Tools</button>
-                <button className={leftPanelTab === "layers" ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" role="tab" aria-selected={leftPanelTab === "layers"} onClick={() => setLeftPanelTab("layers")}>Layers</button>
-              </div>
-
-              {leftPanelTab === "tools" ? (
-            <div className="loyalty-studio-tab-panel" role="tabpanel" aria-label="Tools">
-              <div className="loyalty-studio-panel-header">
-                <span>Insert</span>
-                <strong>{FACE_LABELS[activeFace]}</strong>
-              </div>
-              <div className="loyalty-studio-insert-sections" aria-label="Add card element">
-                <div className="loyalty-studio-insert-section">
-                  <span>Content</span>
-                  <div className="loyalty-studio-insert-grid">
-                    <button type="button" aria-label="Add text" title="Text" onClick={() => handleAddElement("text")}><Type size={18} /><span>Text</span></button>
-                    <button type="button" aria-label="Add image" title="Image" onClick={() => handleAddElement("asset")}><Image size={18} /><span>Image</span></button>
-                  </div>
-                </div>
-                <div className="loyalty-studio-insert-section">
-                  <span>Shapes</span>
-                  <div className="loyalty-studio-insert-grid loyalty-studio-insert-grid--compact">
-                    <button type="button" aria-label="Add rectangle" title="Rectangle" onClick={() => handleAddElement("shape", { shape: "rect" })}><Square size={18} /><span>Rect</span></button>
-                    <button type="button" aria-label="Add circle" title="Circle" onClick={() => handleAddElement("shape", { shape: "circle" })}><Circle size={18} /><span>Circle</span></button>
-                    <button type="button" aria-label="Add blob" title="Blob" onClick={() => handleAddElement("shape", { shape: "blob" })}><Shapes size={18} /><span>Blob</span></button>
-                    <button type="button" aria-label="Add line" title="Line" onClick={() => handleAddElement("line")}><Minus size={18} /><span>Line</span></button>
-                  </div>
-                </div>
-                {activeFace === "back" ? (
-                  <div className="loyalty-studio-insert-section">
-                    <span>Loyalty</span>
-                    <div className="loyalty-studio-insert-grid">
-                      <button type="button" aria-label="Add stamp grid" title="Stamp grid" onClick={() => handleAddElement("stampGrid")}><Grid3X3 size={18} /><span>Stamp grid</span></button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div className="loyalty-studio-tab-panel" role="tabpanel" aria-label="Layers">
-              <div className="loyalty-studio-panel-header">
-                <span>Layers</span>
-                <strong>{activeElements.length}</strong>
-              </div>
-              <div className="loyalty-layer-list">
-                {activeElements.map((element, index) => ({ element, index })).sort((a, b) => b.element.zIndex - a.element.zIndex || a.index - b.index).map(({ element }) => {
-                  const displayName = elementLabel(element);
-                  return (
-                    <div
-                      key={element.id}
-                      className={["loyalty-layer-list__item", selectedElementIds.includes(element.id) ? "loyalty-layer-list__item--active" : "", element.hidden ? "loyalty-layer-list__item--hidden" : "", element.locked ? "loyalty-layer-list__item--locked" : ""].filter(Boolean).join(" ")}
-                      draggable={!element.locked}
-                      onClick={(event) => handleSelectElement(element.id, event.shiftKey, event.altKey)}
-                      onDragStart={(event) => {
-                        if (element.locked) return;
-                        setDraggedLayerId(element.id);
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        handleLayerDrop(element.id);
-                      }}
-                      onDragEnd={() => setDraggedLayerId(null)}
-                    >
-                      <button className="loyalty-layer-list__drag" type="button" aria-label="Drag layer" title={element.locked ? "Unlock layer to reorder" : "Drag layer"} disabled={Boolean(element.locked)} onClick={(event) => event.stopPropagation()}><GripVertical size={14} aria-hidden="true" /></button>
-                      <div
-                        className="loyalty-layer-list__name"
-                        contentEditable
-                        suppressContentEditableWarning
-                        role="textbox"
-                        tabIndex={0}
-                        aria-label={`Rename ${displayName}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onFocus={() => handleSelectElement(element.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            event.currentTarget.blur();
-                          }
-                          if (event.key === "Escape") {
-                            event.currentTarget.textContent = displayName;
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        onBlur={(event) => {
-                          const name = (event.currentTarget.textContent || "").trim();
-                          if (!element.name && name === displayName) return;
-                          if (name === (element.name || "")) return;
-                          updateLayerElement(element.id, (current) => ({ ...current, name }));
-                        }}
-                      >
-                        {displayName}
-                      </div>
-                      <button className="loyalty-layer-list__icon" type="button" aria-pressed={!element.hidden} aria-label={element.hidden ? "Show layer" : "Hide layer"} title={element.hidden ? "Show layer" : "Hide layer"} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, hidden: !current.hidden })); }}>{element.hidden ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}</button>
-                      <button className="loyalty-layer-list__icon" type="button" aria-pressed={Boolean(element.locked)} aria-label={element.locked ? "Unlock layer" : "Lock layer"} title={element.locked ? "Unlock layer" : "Lock layer"} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, locked: !current.locked })); }}>{element.locked ? <Lock size={14} aria-hidden="true" /> : <Unlock size={14} aria-hidden="true" />}</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-            </>
-          )}
+      <div className="lce-body">
+        <aside className="lce-panel lce-panel--left" aria-label="Add, layers and library">
+          <Segmented label="Panel" className="lce-segmented--tabs lce-panel__tabs" value={leftTab} options={[{ value: "add", label: "Add" }, { value: "layers", label: "Layers" }, { value: "library", label: "Library" }]} onChange={setLeftTab} />
+          <div className="lce-panel__scroll">
+            {leftTab === "add" ? renderAddPanel() : leftTab === "layers" ? renderLayersPanel() : renderLibraryPanel()}
+          </div>
         </aside>
 
-        <main className="loyalty-studio-workspace">
-          <div className="loyalty-studio-workspace-header">
-            <div>
-              <span>Canvas</span>
-              <h2>{selectedPreset.name}</h2>
-            </div>
-            <div className="loyalty-studio-workspace-controls">
-              {selectedEditableElements.length > 0 ? (
-                <div className="loyalty-align-toolbar" aria-label="Alignment tools">
-                  <button type="button" title="Align left" aria-label="Align left" onClick={() => handleAlignElements("x", "start")}><AlignHorizontalJustifyStart size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Align horizontal center" aria-label="Align horizontal center" onClick={() => handleAlignElements("x", "center")}><AlignHorizontalJustifyCenter size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Align right" aria-label="Align right" onClick={() => handleAlignElements("x", "end")}><AlignHorizontalJustifyEnd size={15} aria-hidden="true" /></button>
-                  <span aria-hidden="true" />
-                  <button type="button" title="Align top" aria-label="Align top" onClick={() => handleAlignElements("y", "start")}><AlignVerticalJustifyStart size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Align vertical middle" aria-label="Align vertical middle" onClick={() => handleAlignElements("y", "center")}><AlignVerticalJustifyCenter size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Align bottom" aria-label="Align bottom" onClick={() => handleAlignElements("y", "end")}><AlignVerticalJustifyEnd size={15} aria-hidden="true" /></button>
-                  <span aria-hidden="true" />
-                  <button type="button" title="Distribute horizontal spacing" aria-label="Distribute horizontal spacing" disabled={selectedEditableElements.length < 3} onClick={() => handleDistributeElements("x")}><AlignHorizontalSpaceBetween size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Distribute vertical spacing" aria-label="Distribute vertical spacing" disabled={selectedEditableElements.length < 3} onClick={() => handleDistributeElements("y")}><AlignVerticalSpaceBetween size={15} aria-hidden="true" /></button>
-                  <button type="button" title="Center selection to canvas" aria-label="Center selection to canvas" onClick={() => handleCenterElementsOnCanvas("both")}><Crosshair size={15} aria-hidden="true" /></button>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                aria-pressed={snapEnabled}
-                title="Toggle snapping (Shift + S). Hold Alt/Option while dragging to temporarily disable snapping. Hold Alt/Option while resizing to resize from center."
-                className={snapEnabled ? "loyalty-snap-toggle loyalty-snap-toggle--active" : "loyalty-snap-toggle"}
-                onClick={() => setSnapEnabled((current) => !current)}
-              >
-                <span>{snapEnabled ? "Snap On" : "Snap Off"}</span>
-                <kbd>Shift S</kbd>
+        <main className="lce-canvas-area" aria-label="Card canvas">
+          <div className="lce-arrange" role="toolbar" aria-label="Arrange">
+            <IconButton icon={AlignLeftIcon} label="Align left" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("x", "start")} />
+            <IconButton icon={AlignHorizontalCenterIcon} label="Align centre" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("x", "center")} />
+            <IconButton icon={AlignRightIcon} label="Align right" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("x", "end")} />
+            <span className="lce-arrange__divider" aria-hidden="true" />
+            <IconButton icon={AlignTopIcon} label="Align top" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("y", "start")} />
+            <IconButton icon={AlignVerticalCenterIcon} label="Align middle" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("y", "center")} />
+            <IconButton icon={AlignBottomIcon} label="Align bottom" disabled={selectedEditableElements.length === 0} onClick={() => handleAlign("y", "end")} />
+            <span className="lce-arrange__divider" aria-hidden="true" />
+            <span className="lce-menu-anchor">
+              <button type="button" className="lce-arrange__order" disabled={!hasSelection} aria-expanded={orderMenuOpen} onClick={() => setOrderMenuOpen((open) => !open)}>
+                <Icon icon={Layers01Icon} size={16} />
+                <span>Order</span>
+                <Icon icon={ArrowDown01Icon} size={14} />
               </button>
-              <div className="view-toggle" role="tablist" aria-label="Card face">
-                {faceKeys.map((face) => (
-                  <button key={face} className={activeFace === face ? "loyalty-studio-tabs__button loyalty-studio-tabs__button--active" : "loyalty-studio-tabs__button"} type="button" onClick={() => setActiveFace(face)}>{FACE_LABELS[face]}</button>
-                ))}
-              </div>
-            </div>
+              {orderMenuOpen && hasSelection ? <Menu label="Order" align="center" items={orderItems} onClose={() => setOrderMenuOpen(false)} /> : null}
+            </span>
+            <span className="lce-arrange__divider" aria-hidden="true" />
+            <IconButton icon={Copy01Icon} label="Duplicate (Ctrl+D)" disabled={selectedEditableElements.length === 0} onClick={duplicateSelectedElements} />
+            <IconButton icon={selectionLocked ? LockKeyIcon : SquareUnlock01Icon} label={selectionLocked ? "Unlock" : "Lock"} active={selectionLocked} disabled={!hasSelection} onClick={toggleSelectionLock} />
+            <IconButton icon={Delete02Icon} label="Delete" tone="danger" disabled={selectedEditableElements.length === 0} onClick={handleDeleteElement} />
           </div>
 
-          <LoyaltyCardDesignCanvas
-            schema={selectedPreset.designSchema}
-            face={activeFace}
-            selectedElementIds={selectedElementIds}
-            tokens={editorPreviewTokens}
-            snapEnabled={snapEnabled}
-            onSelectElement={handleSelectElement}
-            onBeginInteraction={recordHistorySnapshot}
-            onChangeElement={(elementId, nextElement, options) => {
-              commit((preset) => normalizeLoyaltyCardPreset({
-                ...preset,
-                designSchema: updateElement(preset.designSchema, activeFace, elementId, () => nextElement),
-              }), options);
-            }}
-            onChangeElements={(nextElements, options) => {
-              commit((preset) => normalizeLoyaltyCardPreset({
-                ...preset,
-                designSchema: withFace(preset.designSchema, activeFace, nextElements),
-              }), options);
-            }}
-          />
+          <div ref={stageRef} className="lce-stage">
+            <LoyaltyCardDesignCanvas
+              schema={record.designSchema}
+              face={activeFace}
+              selectedElementIds={selectedElementIds}
+              tokens={editorTokens}
+              snapEnabled={snapEnabled}
+              cardWidth={cardWidth}
+              replayKey={replayKey}
+              renderSelectionTag={renderSelectionTag}
+              onSelectElement={handleSelectElement}
+              onBeginInteraction={pushUndo}
+              onChangeElement={(elementId, nextElement, options) => {
+                commit((preset) => normalizeLoyaltyCardPreset({ ...preset, designSchema: updateElement(preset.designSchema, activeFace, elementId, () => nextElement) }), options);
+              }}
+              onChangeElements={commitElements}
+            />
+          </div>
+
+          <div className="lce-bottombar">
+            <div className="lce-pill lce-zoom" role="group" aria-label="Zoom">
+              <IconButton icon={MinusSignIcon} label="Zoom out" size="sm" disabled={zoomPercent <= ZOOM_STEPS[0]} onClick={() => stepZoom(-1)} />
+              <button type="button" className="lce-zoom__value" title="Back to 100%" onClick={() => setZoom(100)}>{zoomPercent}%</button>
+              <IconButton icon={PlusSignIcon} label="Zoom in" size="sm" disabled={zoomPercent >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} onClick={() => stepZoom(1)} />
+              <button type="button" className={cx("lce-zoom__fit", zoom === "fit" && "lce-zoom__fit--active")} onClick={() => setZoom("fit")}>Fit</button>
+            </div>
+            <div className="lce-faces" role="tablist" aria-label="Card side">
+              {faceKeys.map((face) => (
+                <button key={face} type="button" role="tab" aria-selected={activeFace === face} className={cx("lce-face", activeFace === face && "lce-face--active")} onClick={() => setActiveFace(face)}>
+                  <span className="lce-face__thumb">
+                    <LoyaltyCardRenderer schema={record.designSchema} face={face} tokens={editorTokens} style={{ border: "none", boxShadow: "none" }} />
+                  </span>
+                  <span className="lce-face__label">{FACE_LABELS[face]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="lce-pill lce-snap">
+              <Icon icon={MagnetIcon} size={16} />
+              <Switch label="Snap" checked={snapEnabled} onChange={setSnapEnabled} />
+            </div>
+          </div>
         </main>
 
-        <aside className="loyalty-studio-inspector" aria-label="Preset inspector">
-          {inspectorPane === "fontPicker" && selectedElement?.type === "text" ? (
-            <section className="loyalty-inspector-card loyalty-inspector-card--font-picker">
-              <div className="loyalty-font-browser-header">
-                <button type="button" onClick={() => setInspectorPane("properties")}><ArrowLeft size={15} />Back</button>
-                <div>
-                  <span>Font family</span>
-                  <strong style={{ fontFamily: `"${selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}", sans-serif`, fontWeight: 400 }}>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
-                </div>
-              </div>
-              <label className="field"><span>Search fonts</span><input autoFocus value={fontSearch} onChange={(event) => setFontSearch(event.target.value)} /></label>
-              <div className="loyalty-font-browser-count">{visibleFontCount} fonts</div>
-              <div className="loyalty-font-browser-list">
-                {visibleUploadedFontGroups.length ? (
-                  <div className="loyalty-font-browser-group">
-                    <span>Uploaded fonts</span>
-                    {visibleUploadedFontGroups.map((group) => {
-                      const isActive = selectedElement.fontSource === "customUrl" && (group.fonts.some((font) => font.id === selectedElement.fontKey) || uploadedFontFamilyKey(selectedElement.fontFamily) === group.id);
-                      return <UploadedFontBrowserItem key={group.id} group={group} isActive={isActive} onSelect={applyUploadedFontGroup} onArchive={onArchiveFont} onDelete={onDeleteFont} />;
-                    })}
-                  </div>
-                ) : null}
-                {fontOptionsByCategory.map((group) => (
-                  <div key={group.category} className="loyalty-font-browser-group">
-                    <span>{getLoyaltyCardFontCategoryLabel(group.category)}</span>
-                    {group.fonts.map((font) => {
-                      const isActive = font.key === getTextFontKey(selectedElement);
-                      return <FontBrowserItem key={font.key} font={font} isActive={isActive} onSelect={applyCatalogFont} />;
-                    })}
-                  </div>
-                ))}
-                {visibleFontCount === 0 ? <div className="loyalty-inspector-empty">No matching fonts.</div> : null}
-              </div>
-            </section>
-          ) : (
-            <>
-              <section className="loyalty-inspector-card loyalty-inspector-card--preset">
-                <div className="loyalty-studio-panel-header">
-                  <span>Design</span>
-                </div>
-                <div className="loyalty-inspector-form">
-                  {renderMeta ? renderMeta({ record: value, update: (updater) => commit(updater) }) : null}
-                  <label className="field"><span>Card radius</span><input type="number" value={selectedPreset.designSchema.canvas.borderRadius ?? 32} onChange={(event) => commit((preset) => ({ ...preset, designSchema: { ...preset.designSchema, canvas: { ...preset.designSchema.canvas, borderRadius: clampNumber(Number(event.target.value), 0, 160) } } }))} /></label>
-                  {activeBackground ? (
-                    <>
-                      <label className="field"><span>{FACE_LABELS[activeFace]} background</span><select value={activeBackground.type} onChange={(event) => updateBackground(defaultBackground(event.target.value as LoyaltyCardBackground["type"], activeBackground))}><option value="solid">Solid</option><option value="gradient">Gradient</option><option value="image">Image</option></select></label>
-                      {activeBackground.type === "solid" ? (
-                        <ColorField label="Color" value={activeBackground.color} onChange={(color) => updateBackground({ ...activeBackground, color })} fallback="#111827" />
-                      ) : null}
-                      {activeBackground.type === "gradient" ? (
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <ColorField label="Color 1" value={activeBackground.colors[0] || "#111827"} onChange={(color) => updateBackground({ ...activeBackground, colors: [color, activeBackground.colors[1] || "#F97316", activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} fallback="#111827" />
-                          <ColorField label="Color 2" value={activeBackground.colors[1] || "#F97316"} onChange={(color) => updateBackground({ ...activeBackground, colors: [activeBackground.colors[0] || "#111827", color, activeBackground.colors[2], activeBackground.colors[3]].filter(Boolean) as string[] })} fallback="#F97316" />
-                          <label className="field"><span>Angle</span><input type="number" value={activeBackground.angle} onChange={(event) => updateBackground({ ...activeBackground, angle: clampNumber(Number(event.target.value), 0, 360) })} /></label>
-                        </div>
-                      ) : null}
-                      {activeBackground.type === "image" ? (
-                        <div className="loyalty-inspector-form">
-                          <ImageUrlField label="Image URL" value={activeBackground.imageUrl} context={{ face: activeFace, field: "background.imageUrl", currentUrl: activeBackground.imageUrl }} onChange={(imageUrl) => updateBackground({ ...activeBackground, imageUrl })} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
-                          <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                            <ColorField label="Base color" value={activeBackground.color} onChange={(color) => updateBackground({ ...activeBackground, color })} fallback="#111827" />
-                            <label className="field"><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={activeBackground.opacity ?? 1} onChange={(event) => updateBackground({ ...activeBackground, opacity: clampNumber(Number(event.target.value), 0, 1) })} /></label>
-                            <label className="field"><span>Fit</span><select value={activeBackground.fit} onChange={(event) => updateBackground({ ...activeBackground, fit: event.target.value as "cover" | "contain" | "fill" | "manual" })}><option value="cover">Cover</option><option value="contain">Contain</option><option value="fill">Fill</option><option value="manual">Manual</option></select></label>
-                            <label className="field"><span>Align X</span><select value={activeBackground.alignX || "center"} onChange={(event) => updateBackground({ ...activeBackground, alignX: event.target.value as "left" | "center" | "right" })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
-                            <label className="field"><span>Align Y</span><select value={activeBackground.alignY || "center"} onChange={(event) => updateBackground({ ...activeBackground, alignY: event.target.value as "top" | "center" | "bottom" })}><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
-                          </div>
-                          {activeBackground.fit === "manual" ? (
-                            <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                              <label className="field"><span>Image X</span><input type="number" value={activeBackground.x ?? 0} onChange={(event) => updateBackgroundField((background) => background.type === "image" ? { ...background, x: clampNumber(Number(event.target.value), -CANVAS_WIDTH, CANVAS_WIDTH) } : background)} /></label>
-                              <label className="field"><span>Image Y</span><input type="number" value={activeBackground.y ?? 0} onChange={(event) => updateBackgroundField((background) => background.type === "image" ? { ...background, y: clampNumber(Number(event.target.value), -CANVAS_HEIGHT, CANVAS_HEIGHT) } : background)} /></label>
-                              <label className="field"><span>Image W</span><input type="number" value={activeBackground.width ?? CANVAS_WIDTH} onChange={(event) => updateBackgroundField((background) => background.type === "image" ? { ...background, width: clampNumber(Number(event.target.value), 1, CANVAS_WIDTH * 3) } : background)} /></label>
-                              <label className="field"><span>Image H</span><input type="number" value={activeBackground.height ?? CANVAS_HEIGHT} onChange={(event) => updateBackgroundField((background) => background.type === "image" ? { ...background, height: clampNumber(Number(event.target.value), 1, CANVAS_HEIGHT * 3) } : background)} /></label>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              </section>
-
-              <section className="loyalty-inspector-card loyalty-inspector-card--element">
-                <div className="loyalty-studio-panel-header">
-                  <span>Element</span>
-                  <strong>{selectedElement ? selectedElement.type : selectedElementIds.length > 1 ? `${selectedElementIds.length} selected` : "None"}</strong>
-                </div>
-                {selectedElementIds.length > 1 ? (
-                  <>
-                    <div className="loyalty-inspector-empty">{selectedElementIds.length} elements selected. Drag any selected element to move them together.</div>
-                    <div className="loyalty-layer-actions">
-                      <button type="button" onClick={handleGroupSelected}>Group</button>
-                      <button type="button" onClick={handleUngroupSelected} disabled={selectedGroupIds.length === 0}>Ungroup</button>
-                      <button type="button" className="loyalty-danger-button" onClick={handleDeleteElement}><Trash2 size={14} />Delete</button>
-                    </div>
-                  </>
-                ) : selectedElement ? (
-                  <>
-                    <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                      <label className="field field--icon"><IconLabel icon={Move01Icon} label="X position" /><input type="number" value={selectedElement.x} onChange={(event) => updateSelectedElement((element) => ({ ...element, x: clampNumber(Number(event.target.value), -CANVAS_WIDTH, CANVAS_WIDTH) }))} /></label>
-                      <label className="field field--icon"><IconLabel icon={Move01Icon} label="Y position" /><input type="number" value={selectedElement.y} onChange={(event) => updateSelectedElement((element) => ({ ...element, y: clampNumber(Number(event.target.value), -CANVAS_HEIGHT, CANVAS_HEIGHT) }))} /></label>
-                      <label className="field field--icon"><IconLabel icon={Resize01Icon} label={selectedElement.type === "stampGrid" ? "Box width" : "Width"} /><input type="number" value={selectedElement.width} onChange={(event) => updateSelectedElement((element) => ({ ...element, width: clampNumber(Number(event.target.value), 1, CANVAS_WIDTH * 3) }))} /></label>
-                      <label className="field field--icon"><IconLabel icon={Resize01Icon} label={selectedElement.type === "stampGrid" ? "Box height" : "Height"} /><input type="number" value={selectedElement.height} onChange={(event) => updateSelectedElement((element) => ({ ...element, height: clampNumber(Number(event.target.value), 1, CANVAS_HEIGHT * 3) }))} /></label>
-                      <label className="field field--icon"><IconLabel icon={Rotate01Icon} label="Rotate" /><input type="number" value={selectedElement.rotation} onChange={(event) => updateSelectedElement((element) => ({ ...element, rotation: Number(event.target.value) || 0 }))} /></label>
-                      <label className="field field--icon"><IconLabel icon={CircleIcon} label="Opacity" /><input type="number" min="0" max="1" step="0.05" value={selectedElement.opacity} onChange={(event) => updateSelectedElement((element) => ({ ...element, opacity: clampNumber(Number(event.target.value), 0, 1) }))} /></label>
-                    </div>
-
-                    {selectedElement.type === "text" ? (
-                      <div className="loyalty-inspector-form">
-                        <InspectorSection icon={TextIcon} label="Text" />
-                        <label className="field field--icon field--icon-textarea"><IconLabel icon={TypeCursorIcon} label="Text" /><textarea rows={3} value={selectedElement.token} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, token: event.target.value } : element)} /></label>
-                        <div className="loyalty-token-row" aria-label="Insert text token">
-                          {textTokens.map((token) => (
-                            <button key={token} type="button" onClick={() => updateSelectedElement((element) => element.type === "text" ? { ...element, token: `${element.token}${element.token ? " " : ""}${token}` } : element)}>{token}</button>
-                          ))}
-                        </div>
-                        <div className="field">
-                          <span>Font family</span>
-                          <button className="loyalty-font-family-trigger" type="button" onClick={() => {
-                            setFontSearch("");
-                            setInspectorPane("fontPicker");
-                          }}>
-                            <strong>{selectedElement.fontFamily || findLoyaltyCardFont(getTextFontKey(selectedElement))?.family || "Outfit"}</strong>
-                            <small>Google Fonts and uploaded fonts</small>
-                          </button>
-                        </div>
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={TextBoldIcon} label="Weight" /><select value={String(selectedTextWeight)} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, Number(event.target.value), selectedTextStyle) : element)}>{selectedTextWeightOptions.map((weight) => <option key={weight} value={String(weight)}>{formatFontWeightOption(weight)}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Style" /><select value={selectedTextStyle} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? applyUploadedVariantToTextElement(element, selectedTextWeight, event.target.value as "normal" | "italic") : element)}>{selectedTextStyleOptions.map((style) => <option key={style} value={style}>{formatFontStyleOption(style)}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={TextFontIcon} label="Font size" /><input type="number" value={selectedElement.fontSize} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, fontSize: clampNumber(Number(event.target.value), 1, 220) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={TextIcon} label="Line height" /><input type="number" step="0.05" value={selectedElement.lineHeight} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, lineHeight: clampNumber(Number(event.target.value), 0.7, 2.5) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={LetterSpacingIcon} label="Letter spacing" /><input type="number" value={selectedElement.letterSpacing || 0} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, letterSpacing: clampNumber(Number(event.target.value), -20, 80) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={CaseSensitiveIcon} label="Transform" /><select value={selectedElement.textTransform || "none"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, textTransform: event.target.value as "none" | "uppercase" | "lowercase" | "capitalize" } : element)}><option value="none">None</option><option value="uppercase">Uppercase</option><option value="lowercase">Lowercase</option><option value="capitalize">Capitalize</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={AlignLeftIcon} label="Align" /><select value={selectedElement.align} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, align: event.target.value as "left" | "center" | "right" } : element)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={AlignVerticalCenterIcon} label="Vertical align" /><select value={selectedElement.verticalAlign || "center"} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, verticalAlign: event.target.value as "top" | "center" | "bottom" } : element)}><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
-                          <ColorField label="Fill" value={selectedElement.color} onChange={(color) => updateSelectedElement((element) => element.type === "text" ? { ...element, color } : element)} fallback="#111827" />
-                          <ColorField label="Stroke" value={selectedElement.textStrokeColor || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "text" ? { ...element, textStrokeColor: color } : element)} fallback="#000000" />
-                          <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.textStrokeWidth || 0} onChange={(event) => updateSelectedElement((element) => element.type === "text" ? { ...element, textStrokeWidth: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {selectedElement.type === "shape" ? (
-                      <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                        <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Shape" /><select value={selectedElement.shape} onChange={(event) => updateSelectedElement((element) => {
-                          if (element.type !== "shape") return element;
-                          const nextShape = event.target.value as "rect" | "circle" | "blob";
-                          const squareSize = Math.max(1, Math.min(element.width, element.height));
-                          const wasAspectShape = element.shape === "circle" || element.shape === "blob";
-                          const lockAspectRatio = nextShape === "rect" ? false : wasAspectShape ? element.lockAspectRatio ?? true : true;
-                          return { ...element, shape: nextShape, width: nextShape === "rect" ? element.width : squareSize, height: nextShape === "rect" ? element.height : squareSize, radius: nextShape === "circle" ? 999 : element.radius || 24, lockAspectRatio };
-                        })}><option value="rect">Rectangle</option><option value="circle">Circle</option><option value="blob">Blob</option></select></label>
-                        <div className="field field--icon"><IconLabel icon={Resize01Icon} label="Aspect ratio" /><RatioLockButton locked={selectedElement.lockAspectRatio ?? (selectedElement.shape === "circle" || selectedElement.shape === "blob")} onToggle={() => updateSelectedElement((element) => element.type === "shape" ? { ...element, lockAspectRatio: !(element.lockAspectRatio ?? (element.shape === "circle" || element.shape === "blob")) } : element)} /></div>
-                        <ColorField label="Fill" value={selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, fill: color } : element)} fallback="#F97316" />
-                        <ColorField label="Stroke" value={selectedElement.stroke || "#000000"} onChange={(color) => updateSelectedElement((element) => element.type === "shape" ? { ...element, stroke: color } : element)} fallback="#000000" />
-                        <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Stroke width" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 0, 80) } : element)} /></label>
-                        {selectedElement.shape === "rect" ? (
-                          <>
-                            <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Corner radius" /><input type="number" min="0" max="500" step="1" value={selectedElement.radius} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, radius: clampNumber(Number(event.target.value), 0, 500) } : element)} /></label>
-                            <label className="field field--icon"><IconLabel icon={RadiusIcon} label="Corner radius slider" /><input type="range" min="0" max="500" step="1" value={clampNumber(selectedElement.radius, 0, 500)} onChange={(event) => updateSelectedElement((element) => element.type === "shape" ? { ...element, radius: clampNumber(Number(event.target.value), 0, 500) } : element)} /></label>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {selectedElement.type === "line" ? (
-                      <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                        <ColorField label="Color" value={selectedElement.color} onChange={(color) => updateSelectedElement((element) => element.type === "line" ? { ...element, color } : element)} fallback="#111827" />
-                        <label className="field field--icon"><IconLabel icon={StrokeCenterIcon} label="Stroke" /><input type="number" value={selectedElement.strokeWidth} onChange={(event) => updateSelectedElement((element) => element.type === "line" ? { ...element, strokeWidth: clampNumber(Number(event.target.value), 1, 60) } : element)} /></label>
-                      </div>
-                    ) : null}
-
-                    {selectedElement.type === "asset" ? (
-                      <div className="loyalty-inspector-form">
-                        <InspectorSection icon={ImageAdd01Icon} label="Asset" />
-                        <label className="field field--icon"><IconLabel icon={ImageAdd01Icon} label="Asset ID" /><input value={selectedElement.assetId} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, assetId: event.target.value } : element)} /></label>
-                        <ImageUrlField label="Image URL" value={selectedElement.imageUrl} context={{ face: activeFace, field: "asset.imageUrl", elementId: selectedElement.id, currentUrl: selectedElement.imageUrl }} onChange={(imageUrl) => updateSelectedElement((element) => element.type === "asset" ? { ...element, imageUrl } : element)} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
-                        <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Fit" /><select value={selectedElement.fit} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, fit: event.target.value as "cover" | "contain" | "crop", cropX: element.cropX || 0, cropY: element.cropY || 0, cropScale: element.cropScale || 1 } : element)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="crop">Crop</option></select></label>
-                        <div className="field field--icon"><IconLabel icon={Resize01Icon} label="Aspect ratio" /><RatioLockButton locked={selectedElement.lockAspectRatio ?? true} onToggle={() => updateSelectedElement((element) => element.type === "asset" ? { ...element, lockAspectRatio: !(element.lockAspectRatio ?? true) } : element)} /></div>
-                        {selectedElement.fit === "crop" ? (
-                          <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                            <label className="field field--icon"><IconLabel icon={Move01Icon} label="Crop X" /><input type="number" value={selectedElement.cropX || 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, cropX: clampNumber(Number(event.target.value), -CANVAS_WIDTH, CANVAS_WIDTH) } : element)} /></label>
-                            <label className="field field--icon"><IconLabel icon={Move01Icon} label="Crop Y" /><input type="number" value={selectedElement.cropY || 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, cropY: clampNumber(Number(event.target.value), -CANVAS_HEIGHT, CANVAS_HEIGHT) } : element)} /></label>
-                            <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Crop scale" /><input type="number" step="0.05" value={selectedElement.cropScale || 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, cropScale: clampNumber(Number(event.target.value), 0.1, 5) } : element)} /></label>
-                          </div>
-                        ) : null}
-                        <InspectorSection icon={SparklesIcon} label="Image effects" />
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={SparklesIcon} label="Preset" /><select value={selectedElement.filterPreset || "none"} onChange={(event) => updateSelectedElement((element) => {
-                            if (element.type !== "asset") return element;
-                            const presetKey = event.target.value as ImageFilterPresetKey;
-                            const preset = imageFilterPresets[presetKey] || imageFilterPresets.none;
-                            return { ...element, filterPreset: presetKey, filterBrightness: preset.filterBrightness, filterContrast: preset.filterContrast, filterSaturation: preset.filterSaturation, filterHue: preset.filterHue, filterSepia: preset.filterSepia, filterGrayscale: preset.filterGrayscale, filterInvert: preset.filterInvert, filterBlur: preset.filterBlur };
-                          })}>{Object.entries(imageFilterPresets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select></label>
-                          <label className="field field--icon"><IconLabel icon={Sun02Icon} label="Brightness" /><input type="number" step="0.05" value={selectedElement.filterBrightness ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBrightness: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ContrastIcon} label="Contrast" /><input type="number" step="0.05" value={selectedElement.filterContrast ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterContrast: clampNumber(Number(event.target.value), 0, 2) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={DropletsIcon} label="Saturation" /><input type="number" step="0.05" value={selectedElement.filterSaturation ?? 1} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterSaturation: clampNumber(Number(event.target.value), 0, 3) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Rotate01Icon} label="Hue" /><input type="number" value={selectedElement.filterHue ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterHue: clampNumber(Number(event.target.value), -180, 180) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColorPickerIcon} label="Sepia" /><input type="number" step="0.05" value={selectedElement.filterSepia ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterSepia: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={ColorsIcon} label="Grayscale" /><input type="number" step="0.05" value={selectedElement.filterGrayscale ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterGrayscale: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={FilterResetIcon} label="Invert" /><input type="number" step="0.05" value={selectedElement.filterInvert ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterInvert: clampNumber(Number(event.target.value), 0, 1) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={BlurIcon} label="Blur" /><input type="number" step="0.5" value={selectedElement.filterBlur ?? 0} onChange={(event) => updateSelectedElement((element) => element.type === "asset" ? { ...element, filterPreset: "none", filterBlur: clampNumber(Number(event.target.value), 0, 20) } : element)} /></label>
-                        </div>
-                        <ColorField label="Tint" value={selectedElement.tint} onChange={(color) => updateSelectedElement((element) => element.type === "asset" ? { ...element, tint: color } : element)} fallback="#111827" />
-                      </div>
-                    ) : null}
-
-                    {selectedElement.type === "stampGrid" ? (
-                      <div className="loyalty-inspector-form">
-                        <InspectorSection icon={GridTableIcon} label="Stamp grid" />
-                        <StampLayoutControl element={selectedElement} onChange={(next) => updateSelectedStampGrid(next)} />
-
-                        <details className="loyalty-advanced-section">
-                          <summary>Live data tokens</summary>
-                          <p>Only use these for legacy or custom runtime bindings. For tier cards, stamp slots come from this design.</p>
-                          <label className="field field--icon"><IconLabel icon={TypeCursorIcon} label="Total token" /><input value={selectedElement.countToken} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, countToken: event.target.value } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={TypeCursorIcon} label="Filled token" /><input value={selectedElement.filledToken || ""} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledToken: event.target.value } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={TypeCursorIcon} label="Stamp data token" /><input value={selectedElement.stampDataToken || "{{stamps}}"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, stampDataToken: event.target.value } : element)} /></label>
-                        </details>
-
-                        <InspectorSection icon={CircleIcon} label="Empty" />
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Empty mode" /><select value={selectedElement.emptyMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Preset image</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={CircleIcon} label="Empty shape" /><select value={selectedElement.emptyShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyShape: event.target.value as "circle" | "rounded_square" | "heart", shape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
-                          <ColorField label="Empty fill" value={selectedElement.emptyFill || selectedElement.fill} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyFill: color, fill: color } : element)} fallback="#FFFFFF" />
-                          <ColorField label="Empty stroke" value={selectedElement.emptyStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStroke: color, stroke: color } : element)} fallback="#111827" />
-                          <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Empty stroke width" /><input type="number" value={selectedElement.emptyStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, emptyStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                        </div>
-
-                        <InspectorSection icon={SparklesIcon} label="Filled" />
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={SparklesIcon} label="Filled behavior" /><select value={selectedElement.filledComposition || "overlay"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledComposition: event.target.value as "overlay" | "replace" } : element)}><option value="overlay">Overlay empty stamp</option><option value="replace">Replace empty stamp</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={ShapeCollectionIcon} label="Filled mode" /><select value={selectedElement.filledMode || "shape"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledMode: event.target.value as "shape" | "image" } : element)}><option value="shape">Shape</option><option value="image">Preset image</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={CircleIcon} label="Filled shape" /><select value={selectedElement.filledShape || selectedElement.shape} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledShape: event.target.value as "circle" | "rounded_square" | "heart" } : element)}><option value="circle">Circle</option><option value="rounded_square">Rounded square</option><option value="heart">Heart</option></select></label>
-                          <ColorField label="Filled fill" value={selectedElement.filledFill || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledFill: color } : element)} fallback="#F97316" />
-                          <ColorField label="Filled stroke" value={selectedElement.filledStroke || selectedElement.stroke} onChange={(color) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStroke: color } : element)} fallback="#F97316" />
-                          <label className="field field--icon"><IconLabel icon={BorderFullIcon} label="Filled stroke width" /><input type="number" value={selectedElement.filledStrokeWidth ?? 2} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledStrokeWidth: clampNumber(Number(event.target.value), 0, 24) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Filled scale" /><input type="number" min="25" max="250" step="5" value={Math.round((selectedElement.filledScale ?? 1) * 100)} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledScale: clampNumber(Number(event.target.value), 25, 250) / 100 } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Rotate01Icon} label="Random rotation" /><input type="number" min="0" max="45" step="1" value={selectedElement.filledRandomRotation ?? 45} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, filledRandomRotation: clampNumber(Number(event.target.value), 0, 45) } : element)} /></label>
-                        </div>
-
-                        <InspectorSection icon={Timer01Icon} label="Metadata & motion" />
-                        <div className="loyalty-inspector-form loyalty-inspector-form--grid">
-                          <label className="field field--icon"><IconLabel icon={Resize01Icon} label="Image fit" /><select value={selectedElement.imageFit || "contain"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, imageFit: event.target.value as "contain" | "cover" | "fill" } : element)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="fill">Fill</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={CalendarCheckIcon} label="Show dates" /><select value={selectedElement.showStampDates === false ? "false" : "true"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, showStampDates: event.target.value === "true" } : element)}><option value="true">Yes</option><option value="false">No</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={Clock01Icon} label="Date format" /><select value={selectedElement.dateFormat || "short"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, dateFormat: event.target.value as "short" | "medium" | "relative" } : element)}><option value="short">Short</option><option value="medium">Medium</option><option value="relative">Relative</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={SparklesIcon} label="Animation" /><select value={selectedElement.animation || "none"} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, animation: event.target.value as "none" | "pop" | "stamp" | "bounce" } : element)}><option value="none">None</option><option value="pop">Pop</option><option value="stamp">Stamp</option><option value="bounce">Bounce</option></select></label>
-                          <label className="field field--icon"><IconLabel icon={Timer01Icon} label="Duration ms" /><input type="number" value={selectedElement.animationDuration ?? 420} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, animationDuration: clampNumber(Number(event.target.value), 0, 3000) } : element)} /></label>
-                          <label className="field field--icon"><IconLabel icon={Timer01Icon} label="Stagger ms" /><input type="number" value={selectedElement.animationStagger ?? 45} onChange={(event) => updateSelectedElement((element) => element.type === "stampGrid" ? { ...element, animationStagger: clampNumber(Number(event.target.value), 0, 500) } : element)} /></label>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="loyalty-layer-actions">
-                      <button type="button" onClick={handleUngroupSelected} disabled={selectedGroupIds.length === 0}>Ungroup</button>
-                      <button type="button" onClick={() => handleLayerEdge("front")} disabled={Boolean(selectedElement.locked)}><BringToFront size={14} />Front</button>
-                      <button type="button" onClick={() => handleLayerStep("up")} disabled={Boolean(selectedElement.locked)}><ArrowUp size={14} />Forward</button>
-                      <button type="button" onClick={() => handleLayerStep("down")} disabled={Boolean(selectedElement.locked)}><ArrowDown size={14} />Back</button>
-                      <button type="button" onClick={() => handleLayerEdge("back")} disabled={Boolean(selectedElement.locked)}><SendToBack size={14} />Behind</button>
-                      <button type="button" className="loyalty-danger-button" onClick={handleDeleteElement} disabled={Boolean(selectedElement.locked)}><Trash2 size={14} />Delete</button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="loyalty-inspector-empty">Select an item on the card to edit it.</div>
-                )}
-              </section>
-            </>
-          )}
+        <aside className="lce-panel lce-panel--inspector lce-inspector" aria-label="Settings">
+          {renderInspector()}
         </aside>
       </div>
+
+      {previewOpen ? (
+        <Modal title="Preview" subtitle="How the card looks with the sample data. Nothing here is saved." onClose={() => setPreviewOpen(false)} className="lce-modal--preview">
+          <div className="lce-preview-card">
+            <LoyaltyCardRenderer key={`${previewFace}-${replayKey}`} schema={record.designSchema} face={previewFace} tokens={editorTokens} animateStampGridLayout />
+          </div>
+          <div className="lce-preview-controls">
+            <Segmented label="Card side" value={previewFace} options={faceKeys.map((face) => ({ value: face, label: FACE_LABELS[face] }))} onChange={setPreviewFace} />
+            <button type="button" className="lce-button lce-button--small" onClick={() => setReplayKey((key) => key + 1)}><Icon icon={PlayIcon} size={15} />Replay stamps</button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {fontUploadOpen && onUploadFont ? <FontUploadDialog onUpload={onUploadFont as UploadFontHandler} onClose={() => setFontUploadOpen(false)} /> : null}
     </div>
   );
 }
+
