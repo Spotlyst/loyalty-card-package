@@ -147,6 +147,41 @@ The editor accepts optional integration callbacks for media, assets, and fonts. 
 />
 ```
 
+### Layout (0.4)
+
+Since 0.4 the editor follows the Admin Panel design (Pencil file `designs/admin-panel.pen`, "Content · Card editor"):
+
+- **Top bar:** back button, preset name and status chip, "category · Changes saved X ago", undo, redo, Preview, a "…" menu, and the save and publish buttons.
+- **Left panel:** Add (text presets, card fields, shapes and media, colours in this card), Layers, and Library (stamp, icon and pattern images, plus uploaded fonts).
+- **Canvas:** an arrange bar, the card with an orange selection box and a field tag, zoom, face thumbnails and the Snap switch.
+- **Right panel:** labelled settings for the selected item; Card settings when nothing is selected.
+
+All the older props still work. These optional props fill the new top bar and Card settings:
+
+```tsx
+<LoyaltyCardEditor
+  value={preset}
+  onChange={setPreset}
+  tokens={tokens}
+  onBack={() => navigate("/presets")}
+  backLabel="Back to card presets"
+  onSaveDraft={() => save("draft")}       // shows "Save draft"
+  saveDraftLabel="Save draft"
+  onPublish={() => save("published")}     // shows the dark "Publish" button
+  publishLabel="Publish"
+  isSaving={saving}
+  savedAt={preset.updatedAt}             // "Changes saved 2 min ago"
+  hasUnsavedChanges={dirty}               // "Unsaved changes"
+  menuActions={[{ id: "duplicate", label: "Duplicate", onSelect: duplicate }]}
+  showPresetDetails                       // name, category, note for venues and slug in Card settings
+/>
+```
+
+- `actions` still renders, to the left of the save buttons, for hosts that draw their own buttons.
+- `renderMeta` renders inside Card settings (under the preset details when `showPresetDetails` is on).
+- The "…" menu always holds the editor's light/dark switch, which keeps using `localStorage` key `spotlyst.loyaltyCardEditor.theme`.
+- The stamp preview count, the sample venue name and reward under "Preview with sample data", zoom and undo history are editor state only; they are never written to the design.
+
 Permission guidance:
 
 - Admin/superadmin surfaces may pass upload/archive/delete callbacks for global assets and fonts.
