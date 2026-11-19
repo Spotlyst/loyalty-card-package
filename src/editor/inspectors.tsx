@@ -96,6 +96,9 @@ export type StampGridTab = "layout" | "stamps" | "motion";
 
 type Updater<E> = (updater: (element: E) => E) => void;
 
+/** A new background, or a change to apply to the current one (used when an upload finishes later). */
+export type BackgroundUpdate = LoyaltyCardBackground | ((current: LoyaltyCardBackground) => LoyaltyCardBackground);
+
 /* ---------- Shared pieces ---------- */
 
 export function InspectorHeader({ icon, title, subtitle, tone = "primary", element, onToggleHidden, onToggleLocked, children }: { icon: IconType; title: ReactNode; subtitle: ReactNode; tone?: "primary" | "ink"; element?: LoyaltyCardElement | null; onToggleHidden?: () => void; onToggleLocked?: () => void; children?: ReactNode }) {
@@ -357,7 +360,11 @@ function StampLayoutTab({ element, update, preview, effectivePreviewCount, onPre
   const rowCounts = rows.map((row) => row.count).join(",");
   const arrangements = stampArrangements(total);
   const activeArrangement = arrangements.find((option) => option.rows.join(",") === rowCounts)?.id || "custom";
-  const applyRows = (nextRows: StampRowDraft[]) => update((current) => ({ ...current, ...stampRowsPatch(nextRows) }));
+  // Arrangements and alignment keep a live total; changing the number of stamps sets a fixed one.
+  const applyRows = (nextRows: StampRowDraft[]) => {
+    const nextTotal = nextRows.reduce((sum, row) => sum + Math.max(0, Math.floor(row.count)), 0);
+    update((current) => ({ ...current, ...stampRowsPatch(nextRows, { fixedTotal: nextTotal !== total }) }));
+  };
   const stampSize = Math.round(resolveStampGridScale(element));
   const horizontal = element.horizontalAlign || "center";
   const vertical = element.verticalAlign || "top";
@@ -391,7 +398,9 @@ function StampLayoutTab({ element, update, preview, effectivePreviewCount, onPre
             <div key={index} className="lce-row">
               <span className="lce-row__label">Row {index + 1}</span>
               <Stepper label={`Stamps in row ${index + 1}`} value={row.count} min={1} max={12} onChange={(count) => applyRows(rows.map((item, rowIndex) => rowIndex === index ? { ...item, count: Math.min(count, item.count + Math.max(0, 100 - total)) } : item))} />
-              <Segmented iconOnly label={`Row ${index + 1} alignment`} value={row.align} options={[{ value: "left", label: "Left", title: "Align row left", icon: AlignLeftIcon }, { value: "center", label: "Centre", title: "Centre row", icon: AlignHorizontalCenterIcon }, { value: "right", label: "Right", title: "Align row right", icon: AlignRightIcon }]} onChange={(align) => applyRows(rows.map((item, rowIndex) => rowIndex === index ? { ...item, align } : item))} />
+              <Segmented iconOnly label={`Row ${index + 1} alignment`} value={row.align} options={[{ value: "left", label: "Left", title: "Align row left", icon: AlignLeftIcon }, { value: "center", label: "Centre", title: "Centre row", icon: AlignHorizontalCenterIcon }, { value: "right", label: "Right", title: "Align row right", icon: AlignRightIcon }]} onChange={(align) => (element.stampSlots?.length
+                ? update((current) => ({ ...current, stampRows: rows.map((item, rowIndex) => (rowIndex === index ? { ...item, align } : item)) }))
+                : applyRows(rows.map((item, rowIndex) => (rowIndex === index ? { ...item, align } : item))))} />
               <IconButton icon={Cancel01Icon} label={`Remove row ${index + 1}`} size="sm" disabled={rows.length <= 1} onClick={() => applyRows(rows.filter((_, rowIndex) => rowIndex !== index))} />
             </div>
           ))}
@@ -448,11 +457,11 @@ function StampStylesTab({ element, update, onOpenLibrary, face, onUploadImage, o
         {emptyMode === "shape" ? (
           <>
             <div className="lce-tiles-3">
-              {STAMP_SHAPES.map((shape) => <Tile key={shape.value} icon={shape.icon} label={shape.label} active={emptyShape === shape.value} onClick={() => update((current) => ({ ...current, emptyShape: shape.value, shape: shape.value }))} />)}
+              {STAMP_SHAPES.map((shape) => <Tile key={shape.value} icon={shape.icon} label={shape.label} active={emptyShape === shape.value} onClick={() => update((current) => ({ ...current, emptyShape: shape.value }))} />)}
             </div>
-            <ColorField label="Fill" value={element.emptyFill || element.fill} fallback="#FFFFFF" onChange={(color) => update((current) => ({ ...current, emptyFill: color, fill: color }))} />
+            <ColorField label="Fill" value={element.emptyFill || element.fill} fallback="#FFFFFF" onChange={(color) => update((current) => ({ ...current, emptyFill: color }))} />
             <div className="lce-grid-color">
-              <ColorField label="Outline" value={element.emptyStroke || element.stroke} fallback="#181311" onChange={(color) => update((current) => ({ ...current, emptyStroke: color, stroke: color }))} />
+              <ColorField label="Outline" value={element.emptyStroke || element.stroke} fallback="#181311" onChange={(color) => update((current) => ({ ...current, emptyStroke: color }))} />
               <NumberInput label="Width" suffix="px" value={element.emptyStrokeWidth ?? 2} min={0} max={24} step={0.5} decimals={1} onChange={(emptyStrokeWidth) => update((current) => ({ ...current, emptyStrokeWidth }))} />
             </div>
           </>
@@ -626,10 +635,11 @@ export function ShapeInspectorBody({ element, update }: { element: LoyaltyCardSh
       <Section label="Shape">
         <div className="lce-tiles-3">
           {SHAPE_OPTIONS.map((option) => <Tile key={option.value} icon={option.icon} label={option.label} active={element.shape === option.value} onClick={() => update((current) => {
+            if (current.shape === option.value) return current;
             const squareSize = Math.max(1, Math.min(current.width, current.height));
             const wasAspectShape = current.shape === "circle" || current.shape === "blob";
             const lockAspectRatio = option.value === "rect" ? false : wasAspectShape ? current.lockAspectRatio ?? true : true;
-            return { ...current, shape: option.value, width: option.value === "rect" ? current.width : squareSize, height: option.value === "rect" ? current.height : squareSize, radius: option.value === "circle" ? 999 : current.radius || 24, lockAspectRatio };
+            return { ...current, shape: option.value, width: option.value === "rect" ? current.width : squareSize, height: option.value === "rect" ? current.height : squareSize, radius: option.value === "circle" ? 999 : current.shape === "circle" || !current.radius ? 24 : current.radius, lockAspectRatio };
           })} />)}
         </div>
         <Switch label="Keep proportions when resizing" checked={lockRatio} onChange={(lockAspectRatio) => update((current) => ({ ...current, lockAspectRatio }))} />
@@ -724,7 +734,7 @@ type CardSettingsProps = {
   commit: (updater: (record: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord) => void;
   face: LoyaltyCardFaceKey;
   background: LoyaltyCardBackground | null;
-  onBackgroundChange: (background: LoyaltyCardBackground) => void;
+  onBackgroundChange: (background: BackgroundUpdate) => void;
   showPresetDetails: boolean;
   meta: ReactNode;
   sample: SampleData;
@@ -789,7 +799,7 @@ export function cardSettingsHeader() {
   return { icon: CreditCardIcon, title: "Card settings", subtitle: "Click anything on the card to edit it" };
 }
 
-function BackgroundSection({ face, background, onChange, onUploadImage, onImportImageUrl }: { face: LoyaltyCardFaceKey; background: LoyaltyCardBackground; onChange: (background: LoyaltyCardBackground) => void; onUploadImage?: UploadImageHandler; onImportImageUrl?: ImportImageHandler }) {
+function BackgroundSection({ face, background, onChange, onUploadImage, onImportImageUrl }: { face: LoyaltyCardFaceKey; background: LoyaltyCardBackground; onChange: (background: BackgroundUpdate) => void; onUploadImage?: UploadImageHandler; onImportImageUrl?: ImportImageHandler }) {
   const type = background.type;
   return (
     <Section label={`${FACE_LABELS[face]} background`} aside={<span className="lce-hint-inline">Each side has its own</span>}>
@@ -798,7 +808,7 @@ function BackgroundSection({ face, background, onChange, onUploadImage, onImport
       {background.type === "gradient" ? <GradientEditor background={background} onChange={onChange} /> : null}
       {background.type === "image" ? (
         <>
-          <ImageUrlField label="Image link" value={background.imageUrl} context={{ face, field: "background.imageUrl", currentUrl: background.imageUrl }} onChange={(imageUrl) => onChange({ ...background, imageUrl })} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
+          <ImageUrlField label="Image link" value={background.imageUrl} context={{ face, field: "background.imageUrl", currentUrl: background.imageUrl }} onChange={(imageUrl) => onChange((current) => (current.type === "image" ? { ...current, imageUrl } : current))} onUploadImage={onUploadImage} onImportImageUrl={onImportImageUrl} />
           <ColorField label="Colour behind the image" value={background.color} fallback="#111827" onChange={(color) => onChange({ ...background, color })} />
           <Slider label="Image opacity" value={Math.round((background.opacity ?? 1) * 100)} min={0} max={100} format={(value) => `${value}%`} onChange={(value) => onChange({ ...background, opacity: value / 100 })} />
           <Field label="Fit">

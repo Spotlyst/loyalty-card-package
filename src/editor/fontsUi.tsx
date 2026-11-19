@@ -132,7 +132,8 @@ function stripTrailingFontVariant(value: string) {
 }
 
 export function uploadedFontFamilyKey(value: string) {
-  return normalizeFontName(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uploaded-font";
+  // Keep letters and numbers from any script, so "明朝" and "ゴシック" stay separate families.
+  return normalizeFontName(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") || "uploaded-font";
 }
 
 export function groupUploadedFonts(uploadedFonts: LoyaltyCardEditorUploadedFont[]): UploadedFontGroup[] {
@@ -183,7 +184,10 @@ export function getAvailableTextWeights(groups: UploadedFontGroup[], element: Lo
     const candidates = styleFonts.length ? styleFonts : group?.fonts || [];
     const variableFont = selectedFont?.isVariable ? selectedFont : candidates.find((font) => font.isVariable);
     if (variableFont || element.fontIsVariable) {
-      return getVariableFontWeightOptions(variableFont?.fontWeightMin ?? element.fontWeightMin ?? 100, variableFont?.fontWeightMax ?? element.fontWeightMax ?? 900, currentWeight);
+      const variableWeights = getVariableFontWeightOptions(variableFont?.fontWeightMin ?? element.fontWeightMin ?? 100, variableFont?.fontWeightMax ?? element.fontWeightMax ?? 900, currentWeight);
+      // Static files of the same style (say a separate Bold) add the weights the variable file doesn't cover.
+      const extraWeights = candidates.filter((font) => !font.isVariable).map((font) => Math.round(Number(font.fontWeight || 400))).filter((weight) => Number.isFinite(weight));
+      return withCurrentFontWeight([...variableWeights, ...extraWeights], currentWeight, false);
     }
     const staticWeights = candidates.map((font) => Math.round(Number(font.fontWeight || 400))).filter((weight) => Number.isFinite(weight));
     if (staticWeights.length) return withCurrentFontWeight(staticWeights, currentWeight, staticWeights.includes(currentWeight));

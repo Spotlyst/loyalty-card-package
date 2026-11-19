@@ -1,12 +1,13 @@
 import { findLoyaltyCardFont, legacyLoyaltyCardFontMap } from "../fonts.js";
 import type { LoyaltyCardFontCatalogItem } from "../fonts.js";
 import { normalizeLoyaltyCardLayerOrder } from "../normalize.js";
-import { LOYALTY_CARD_CANVAS_HEIGHT, LOYALTY_CARD_CANVAS_WIDTH, resolveLoyaltyCardToken } from "../schema.js";
+import { LOYALTY_CARD_CANVAS_HEIGHT, LOYALTY_CARD_CANVAS_WIDTH, LOYALTY_CARD_FACE_KEYS, resolveLoyaltyCardToken } from "../schema.js";
 import type {
   LoyaltyCardBackground,
   LoyaltyCardDesignSchema,
   LoyaltyCardElement,
   LoyaltyCardFaceKey,
+  LoyaltyCardPresetRecord,
   LoyaltyCardStampGridElement,
   LoyaltyCardTextElement,
   LoyaltyCardTokens,
@@ -460,23 +461,31 @@ export function distributeElements(elements: LoyaltyCardElement[], selectedIds: 
     const bBounds = rotatedElementBounds(b);
     return axis === "x" ? aBounds.left - bBounds.left : aBounds.top - bBounds.top;
   });
-  const firstBounds = rotatedElementBounds(sorted[0]);
-  const lastBounds = rotatedElementBounds(sorted[sorted.length - 1]);
-  const start = axis === "x" ? firstBounds.left : firstBounds.top;
-  const end = axis === "x" ? lastBounds.right : lastBounds.bottom;
-  const totalSize = sorted.reduce((sum, element) => {
-    const bounds = rotatedElementBounds(element);
-    return sum + (axis === "x" ? bounds.width : bounds.height);
-  }, 0);
+  const allBounds = sorted.map(rotatedElementBounds);
+  const start = Math.min(...allBounds.map((bounds) => (axis === "x" ? bounds.left : bounds.top)));
+  const end = Math.max(...allBounds.map((bounds) => (axis === "x" ? bounds.right : bounds.bottom)));
+  const totalSize = allBounds.reduce((sum, bounds) => sum + (axis === "x" ? bounds.width : bounds.height), 0);
   const gap = (end - start - totalSize) / (sorted.length - 1);
   const positions = new Map<string, number>();
-  let cursor = start;
-  sorted.forEach((element) => {
-    const bounds = rotatedElementBounds(element);
-    const position = axis === "x" ? cursor + bounds.width / 2 - element.width / 2 : cursor + bounds.height / 2 - element.height / 2;
+  const place = (element: LoyaltyCardElement, center: number) => {
+    const position = center - (axis === "x" ? element.width : element.height) / 2;
     positions.set(element.id, Math.round(position * 10) / 10);
-    cursor += (axis === "x" ? bounds.width : bounds.height) + gap;
-  });
+  };
+  if (gap >= 0) {
+    // Equal gaps between the boxes, inside the selection's full extent.
+    let cursor = start;
+    sorted.forEach((element, index) => {
+      const size = axis === "x" ? allBounds[index].width : allBounds[index].height;
+      place(element, cursor + size / 2);
+      cursor += size + gap;
+    });
+  } else {
+    // Not enough room for gaps (the boxes overlap): space their centres evenly instead, keeping their order.
+    const byCenter = sorted.map((element, index) => ({ element, center: axis === "x" ? (allBounds[index].left + allBounds[index].right) / 2 : (allBounds[index].top + allBounds[index].bottom) / 2 })).sort((a, b) => a.center - b.center);
+    const first = byCenter[0].center;
+    const step = (byCenter[byCenter.length - 1].center - first) / (byCenter.length - 1);
+    byCenter.forEach(({ element }, index) => place(element, first + step * index));
+  }
   return elements.map((element) => {
     const position = positions.get(element.id);
     if (position === undefined) return element;
@@ -484,11 +493,57 @@ export function distributeElements(elements: LoyaltyCardElement[], selectedIds: 
   });
 }
 
+/* ---------- History ---------- */
+
+const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+function changedKeys(before: Record<string, unknown>, after: Record<string, unknown>, skip: string[] = []) {
+  return Array.from(new Set([...Object.keys(before), ...Object.keys(after)])).filter((key) => !skip.includes(key) && !sameJson(before[key], after[key]));
+}
+
+/**
+ * Names what an edit changed ("front.title.fontSize", "record.name"). Undo merges a quick run of edits
+ * only when they change the same things, so typing or dragging a slider is one step, but
+ * "add heading" then "add body text" stay two.
+ */
+export function describeRecordChange(before: LoyaltyCardPresetRecord, after: LoyaltyCardPresetRecord) {
+  const parts = changedKeys(before as unknown as Record<string, unknown>, after as unknown as Record<string, unknown>, ["designSchema"]).map((key) => `record.${key}`);
+  const beforeSchema = before.designSchema as unknown as Record<string, unknown>;
+  const afterSchema = after.designSchema as unknown as Record<string, unknown>;
+  parts.push(...changedKeys(beforeSchema, afterSchema, ["faces"]).map((key) => `schema.${key}`));
+  LOYALTY_CARD_FACE_KEYS.forEach((face) => {
+    const beforeFace = before.designSchema.faces[face];
+    const afterFace = after.designSchema.faces[face];
+    if (beforeFace === afterFace) return;
+    if (!sameJson(beforeFace?.background, afterFace?.background)) parts.push(`${face}.background`);
+    if (!sameJson(beforeFace?.groups, afterFace?.groups)) parts.push(`${face}.groups`);
+    const beforeElements = beforeFace?.elements || [];
+    const afterElements = afterFace?.elements || [];
+    const beforeIds = beforeElements.map((element) => element.id).sort().join(",");
+    const afterIds = afterElements.map((element) => element.id).sort().join(",");
+    if (beforeIds !== afterIds) {
+      parts.push(`${face}.elements:${afterIds}`);
+      return;
+    }
+    const beforeById = new Map(beforeElements.map((element) => [element.id, element]));
+    afterElements.forEach((element) => {
+      const previous = beforeById.get(element.id);
+      if (!previous || previous === element) return;
+      changedKeys(previous as unknown as Record<string, unknown>, element as unknown as Record<string, unknown>).forEach((key) => parts.push(`${face}.${element.id}.${key}`));
+    });
+  });
+  return parts.sort().join("|");
+}
+
 /* ---------- Stamp rows ---------- */
 
 export type StampRowDraft = { count: number; align: "left" | "center" | "right" };
 
-export function stampRowsPatch(rows: StampRowDraft[]): Partial<LoyaltyCardStampGridElement> {
+/**
+ * Replaces the grid's rows. Live data links stay: `filledToken` always, and `countToken`
+ * unless the caller sets a fixed total (`fixedTotal`), because a live total would override the rows.
+ */
+export function stampRowsPatch(rows: StampRowDraft[], options: { fixedTotal?: boolean } = {}): Partial<LoyaltyCardStampGridElement> {
   const sanitizedRows = rows
     .map((row) => ({ count: clampNumber(Math.floor(Number(row.count) || 0), 0, 12), align: row.align || "center" }))
     .filter((row) => row.count > 0)
@@ -499,8 +554,7 @@ export function stampRowsPatch(rows: StampRowDraft[]): Partial<LoyaltyCardStampG
     stampSlots: undefined,
     count,
     columns: Math.max(1, ...sanitizedRows.map((row) => row.count)),
-    countToken: "",
-    filledToken: "",
+    ...(options.fixedTotal ? { countToken: "" } : {}),
   };
 }
 
@@ -540,7 +594,13 @@ export function resizeStampRows(rows: StampRowDraft[], total: number): StampRowD
   while (difference > 0) {
     const last = next[next.length - 1];
     if (last && last.count < 12) last.count += 1;
-    else next.push({ count: 1, align: last?.align || "center" });
+    else if (next.length < 20) next.push({ count: 1, align: last?.align || "center" });
+    else {
+      // 20 rows is the limit: fill the nearest row from the bottom that still has room.
+      const roomy = [...next].reverse().find((row) => row.count < 12);
+      if (!roomy) break;
+      roomy.count += 1;
+    }
     difference -= 1;
   }
   while (difference < 0 && next.length) {

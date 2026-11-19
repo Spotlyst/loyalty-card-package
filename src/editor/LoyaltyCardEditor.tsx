@@ -50,7 +50,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { normalizeLoyaltyCardLayerOrder, normalizeLoyaltyCardPreset } from "../normalize.js";
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
-import { LOYALTY_CARD_FACE_KEYS } from "../schema.js";
+import { LOYALTY_CARD_FACE_KEYS, resolveLoyaltyCardToken } from "../schema.js";
 import type {
   LoyaltyCardBackground,
   LoyaltyCardElement,
@@ -70,6 +70,7 @@ import {
   clampNumber,
   collectFaceColors,
   contrastingTextColor,
+  describeRecordChange,
   createElement,
   distributeElements,
   elementLabel,
@@ -128,7 +129,7 @@ import {
   TextInspectorBody,
   textHeader,
 } from "./inspectors.js";
-import type { ImportImageHandler, LoyaltyCardEditorImageContext, SampleData, StampGridTab, StampPreviewState, UploadImageHandler } from "./inspectors.js";
+import type { BackgroundUpdate, ImportImageHandler, LoyaltyCardEditorImageContext, SampleData, StampGridTab, StampPreviewState, UploadImageHandler } from "./inspectors.js";
 import { LibraryFontsSection, LibraryPanel } from "./libraryUi.js";
 import type { LibraryKind, LoyaltyCardEditorLibraryAsset, StampTarget, UploadLibraryAssetHandler } from "./libraryUi.js";
 import { Icon, IconButton, Menu, Modal, Segmented, Switch, Tile, cx } from "./ui.js";
@@ -361,6 +362,10 @@ export function LoyaltyCardEditor({
   const [now, setNow] = useState(() => Date.now());
   const undoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
   const lastCommitAtRef = useRef(0);
+  const lastCommitChangeRef = useRef("");
+  // The latest record, so edits that finish later (an image upload) apply on top of what changed meanwhile.
+  const valueRef = useRef(value);
+  const restoreLayerFocusRef = useRef<string | null>(null);
   const redoStackRef = useRef<LoyaltyCardPresetRecord[]>([]);
   const clipboardElementsRef = useRef<LoyaltyCardElement[]>([]);
   const lastSyncedIdRef = useRef<string>(value.id);
@@ -380,14 +385,15 @@ export function LoyaltyCardEditor({
   const fontGroups = useMemo(() => groupUploadedFonts(uploadedFonts), [uploadedFonts]);
 
   const previewGrid = selectedElement?.type === "stampGrid" ? selectedElement : activeElements.find((element): element is LoyaltyCardStampGridElement => element.type === "stampGrid") || firstStampGrid(record, "back");
-  const previewTotal = previewGrid ? resolveStampGridCount(previewGrid) : Number(tokens.stampsRequired) || 10;
+  const previewLiveTotal = previewGrid?.countToken ? Number(resolveLoyaltyCardToken(previewGrid.countToken, tokens)) : undefined;
+  const previewTotal = previewGrid ? resolveStampGridCount(previewGrid, previewLiveTotal) : Number(tokens.stampsRequired) || 10;
   const effectivePreviewCount = previewGrid ? (preview.mode === "manual" ? clampNumber(preview.count, 0, previewTotal) : autoPreviewCount(previewTotal)) : Number(tokens.stampsCollected) || 0;
 
   const editorTokens = useMemo<LoyaltyCardTokens>(() => {
     const base: LoyaltyCardTokens = {
       ...tokens,
-      ...(sample.venueName ? { venueName: sample.venueName } : {}),
-      ...(sample.rewardTitle ? { rewardTitle: sample.rewardTitle } : {}),
+      venueName: sample.venueName,
+      rewardTitle: sample.rewardTitle,
     };
     if (!previewGrid) return base;
     const stamps = Array.from({ length: effectivePreviewCount }).map((_, index) => ({ awardedAt: new Date(stampDatesBaseRef.current - (effectivePreviewCount - index) * 3 * DAY_MS).toISOString() }));
@@ -397,6 +403,8 @@ export function LoyaltyCardEditor({
       ...base,
       stamps,
       stampsCollected: effectivePreviewCount,
+      // "{{stampsCollected}}/{{stampsRequired}}" text matches the grid on the card.
+      stampsRequired: previewTotal,
       ...(stampDataKey ? { [stampDataKey]: stamps } : {}),
       ...(filledKey ? { [filledKey]: effectivePreviewCount } : {}),
     };
@@ -467,22 +475,32 @@ export function LoyaltyCardEditor({
 
   /* ----- history ----- */
 
-  const pushUndo = () => {
-    const stack = dropUnchanged([...undoStackRef.current], value);
-    undoStackRef.current = [...stack.slice(-(HISTORY_LIMIT - 1)), structuredClone(value)];
+  useLayoutEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const pushUndo = (base: LoyaltyCardPresetRecord = valueRef.current) => {
+    const stack = dropUnchanged([...undoStackRef.current], base);
+    undoStackRef.current = [...stack.slice(-(HISTORY_LIMIT - 1)), structuredClone(base)];
     redoStackRef.current = [];
     lastCommitAtRef.current = 0;
   };
 
   // Edits that arrive in a quick run (typing a number, dragging a slider) share one undo step.
+  // An edit that changes nothing (Bring to front on the top layer) leaves undo and redo alone.
   const commit = (updater: (preset: LoyaltyCardPresetRecord) => LoyaltyCardPresetRecord, options: { recordHistory?: boolean } = {}) => {
+    const base = valueRef.current;
+    const next = updater(base);
+    if (next === base || recordKey(next) === recordKey(base)) return;
     if (options.recordHistory !== false) {
       const now = Date.now();
-      const inRun = now - lastCommitAtRef.current < HISTORY_COALESCE_MS && undoStackRef.current.length > 0;
-      if (!inRun) pushUndo();
+      const change = describeRecordChange(base, next);
+      const inRun = now - lastCommitAtRef.current < HISTORY_COALESCE_MS && change === lastCommitChangeRef.current && undoStackRef.current.length > 0;
+      if (!inRun) pushUndo(base);
       lastCommitAtRef.current = now;
+      lastCommitChangeRef.current = change;
     }
-    onChange(updater(value));
+    onChange(next);
   };
 
   const commitElements = (nextElements: LoyaltyCardElement[], options?: { recordHistory?: boolean }) => {
@@ -685,14 +703,19 @@ export function LoyaltyCardEditor({
     commitElements(activeElements.map((element) => ids.has(element.id) ? { ...element, locked: lock } as LoyaltyCardElement : element));
   };
 
-  const updateBackground = (background: LoyaltyCardBackground) => {
-    commit((preset) => ({
-      ...preset,
-      designSchema: {
-        ...preset.designSchema,
-        faces: { ...preset.designSchema.faces, [activeFace]: { ...preset.designSchema.faces[activeFace], background } },
-      },
-    }));
+  const updateBackground = (update: BackgroundUpdate) => {
+    commit((preset) => {
+      const current = preset.designSchema.faces[activeFace]?.background;
+      const background = typeof update === "function" ? (current ? update(current) : null) : update;
+      if (!background) return preset;
+      return {
+        ...preset,
+        designSchema: {
+          ...preset.designSchema,
+          faces: { ...preset.designSchema.faces, [activeFace]: { ...preset.designSchema.faces[activeFace], background } },
+        },
+      };
+    });
   };
 
   const applyColor = (hex: string) => {
@@ -763,15 +786,20 @@ export function LoyaltyCardEditor({
       if (tagName === "input") return !NON_TEXT_INPUTS.has((target as HTMLInputElement).type);
       return tagName === "textarea" || tagName === "select" || target.isContentEditable;
     };
+    // Sliders, switches and colour pickers keep their own arrow and Delete keys; Ctrl/Cmd shortcuts still reach the editor.
+    const isNativeControl = (target: EventTarget | null) => target instanceof HTMLInputElement && NON_TEXT_INPUTS.has(target.type);
+    // Any open dialog (Preview, an upload dialog, or one of the host's) keeps shortcuts away from the canvas.
+    const isDialogOpen = () => typeof document !== "undefined" && Boolean(document.querySelector('[aria-modal="true"]'));
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       const isModifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       if (isModifier && key === "s") {
         event.preventDefault();
-        (onSave || onSaveDraft)?.();
+        if (!isSaving) (onSave || onSaveDraft)?.();
         return;
       }
-      if (isEditableTarget(event.target) || previewOpen || fontUploadOpen) return;
+      if (isEditableTarget(event.target) || previewOpen || fontUploadOpen || isDialogOpen()) return;
       if (!isModifier && event.shiftKey && key === "s") {
         event.preventDefault();
         setSnapEnabled((current) => !current);
@@ -803,6 +831,7 @@ export function LoyaltyCardEditor({
         else setSelectedElementIds([]);
         return;
       }
+      if ((event.key === "Delete" || event.key === "Backspace" || event.key.startsWith("Arrow")) && isNativeControl(event.target)) return;
       if (event.key === "Delete" || event.key === "Backspace") {
         if (selectedElementIds.length === 0) return;
         event.preventDefault();
@@ -843,7 +872,7 @@ export function LoyaltyCardEditor({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeElements, activeFace, inspectorPane, selectedElementIds, value, previewOpen, fontUploadOpen, onSave, onSaveDraft]);
+  }, [activeElements, activeFace, inspectorPane, selectedElementIds, value, previewOpen, fontUploadOpen, onSave, onSaveDraft, isSaving]);
 
   /* ----- zoom ----- */
 
@@ -1119,8 +1148,8 @@ export function LoyaltyCardEditor({
             >
               <span className="lce-layer__grip" aria-hidden="true" title={element.locked ? "Unlock to reorder" : "Drag to reorder"}><Icon icon={DragDropVerticalIcon} size={14} /></span>
               <span className="lce-layer__well"><Icon icon={elementIcon(element)} size={15} /></span>
-              <span className="lce-layer__text">
-                {renaming ? (
+              {renaming ? (
+                <span className="lce-layer__text">
                   <input
                     className="lce-layer__rename"
                     autoFocus
@@ -1128,6 +1157,7 @@ export function LoyaltyCardEditor({
                     aria-label={`Rename ${label}`}
                     onClick={(event) => event.stopPropagation()}
                     onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === "Escape") restoreLayerFocusRef.current = element.id;
                       if (event.key === "Enter") event.currentTarget.blur();
                       if (event.key === "Escape") setRenamingLayerId(null);
                       event.stopPropagation();
@@ -1139,11 +1169,37 @@ export function LoyaltyCardEditor({
                       updateLayerElement(element.id, (current) => ({ ...current, name }));
                     }}
                   />
-                ) : (
-                  <strong onDoubleClick={(event) => { event.stopPropagation(); setRenamingLayerId(element.id); }} title="Double-click to rename">{label}</strong>
-                )}
-                <small>{elementSubtitle(element, editorTokens)}</small>
-              </span>
+                  <small>{elementSubtitle(element, editorTokens)}</small>
+                </span>
+              ) : (
+                // A span with button behaviour rather than a <button>: Firefox won't start a drag on a button.
+                <span
+                  ref={(node) => {
+                    if (node && restoreLayerFocusRef.current === element.id) {
+                      restoreLayerFocusRef.current = null;
+                      node.focus();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className="lce-layer__text lce-layer__select"
+                  aria-pressed={selected}
+                  title="Double-click or press F2 to rename"
+                  onDoubleClick={(event) => { event.stopPropagation(); setRenamingLayerId(element.id); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "F2") {
+                      event.preventDefault();
+                      setRenamingLayerId(element.id);
+                    } else if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelectElement(element.id, event.shiftKey, event.altKey);
+                    }
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <small>{elementSubtitle(element, editorTokens)}</small>
+                </span>
+              )}
               <button type="button" className="lce-layer__action" aria-label={element.hidden ? `Show ${label}` : `Hide ${label}`} title={element.hidden ? "Show" : "Hide"} aria-pressed={Boolean(element.hidden)} onClick={(event) => { event.stopPropagation(); updateLayerElement(element.id, (current) => ({ ...current, hidden: !current.hidden })); }}>
                 <Icon icon={element.hidden ? ViewOffSlashIcon : ViewIcon} size={15} />
               </button>
@@ -1156,14 +1212,24 @@ export function LoyaltyCardEditor({
         <div role="listitem" className={cx("lce-layer", "lce-layer--background", selectedElementIds.length === 0 && "lce-layer--current")} onClick={() => setSelectedElementIds([])}>
           <span className="lce-layer__grip" aria-hidden="true" />
           <span className="lce-layer__swatch" style={backgroundSwatch(activeBackground)} aria-hidden="true" />
-          <span className="lce-layer__text">
+          <span
+            role="button"
+            tabIndex={0}
+            className="lce-layer__text lce-layer__select"
+            aria-pressed={selectedElementIds.length === 0}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              setSelectedElementIds([]);
+            }}
+          >
             <strong>Background</strong>
             <small>{backgroundSummary(activeBackground)}</small>
           </span>
           <span className="lce-layer__action lce-layer__action--static" title="The background always stays at the bottom"><Icon icon={LockKeyIcon} size={15} /></span>
         </div>
       </div>
-      <p className="lce-hint lce-hint--box"><Icon icon={InformationCircleIcon} size={14} />Drag to change the order. Shift-click two layers to select both, then group them. Double-click a name to rename it.</p>
+      <p className="lce-hint lce-hint--box"><Icon icon={InformationCircleIcon} size={14} />Drag to change the order. Shift-click two layers to select both, then group them. Double-click a name, or press F2, to rename it.</p>
     </div>
   );
 

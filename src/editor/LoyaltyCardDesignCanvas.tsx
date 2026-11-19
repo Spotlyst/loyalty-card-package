@@ -1,5 +1,5 @@
 import { LoyaltyCardRenderer } from "../react/LoyaltyCardRenderer.js";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { resolveLoyaltyCardToken, type LoyaltyCardDesignSchema, type LoyaltyCardElement, type LoyaltyCardFaceKey, type LoyaltyCardStampGridElement, type LoyaltyCardStampSlot, type LoyaltyCardTokens } from "../schema.js";
 import { resolveFittedStampGridLayout } from "../stampGridLayout.js";
@@ -738,11 +738,17 @@ export function LoyaltyCardDesignCanvas({
     window.addEventListener("pointercancel", handleEnd);
   };
 
+  // Drawn in card coordinates above the layer's rotated bounds, so it stays on top whatever the rotation.
   const renderSelectionTagFor = (element: LoyaltyCardElement) => {
     if (!renderSelectionTag || element.id !== selectedElement?.id) return null;
     const tag = renderSelectionTag(element);
     if (tag === null || tag === undefined || tag === false) return null;
-    return <span className="loyalty-design-canvas__tag" style={{ transform: `rotate(${-(element.rotation || 0)}deg)` }}>{tag}</span>;
+    const angle = ((element.rotation || 0) * Math.PI) / 180;
+    const halfWidth = (element.width * Math.abs(Math.cos(angle)) + element.height * Math.abs(Math.sin(angle))) / 2;
+    const halfHeight = (element.width * Math.abs(Math.sin(angle)) + element.height * Math.abs(Math.cos(angle))) / 2;
+    const left = (element.x + element.width / 2 - halfWidth) * scale;
+    const top = (element.y + element.height / 2 - halfHeight) * scale;
+    return <span className="loyalty-design-canvas__tag" style={{ left, top }}>{tag}</span>;
   };
 
   const renderHandles = (element: LoyaltyCardElement) => {
@@ -1011,10 +1017,10 @@ export function LoyaltyCardDesignCanvas({
               onPointerDown={(event) => element.locked ? event.stopPropagation() : startDrag(event, element)}
             >
               {element.locked ? null : renderHandles(element)}
-              {renderSelectionTagFor(element)}
               {renderStampGridInlineEditor(element)}
             </div>
           ))}
+          {visibleElements.filter((element) => element.id === selectedElement?.id).map((element) => <Fragment key={`tag-${element.id}`}>{renderSelectionTagFor(element)}</Fragment>)}
           {selectedGroups.map(renderGroupOverlay)}
         </div>
       </div>

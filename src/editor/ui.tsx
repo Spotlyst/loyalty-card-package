@@ -154,6 +154,22 @@ export function NumberInput({ label, value, onChange, min = -Infinity, max = Inf
 export type SegmentOption<T extends string> = { value: T; label: ReactNode; icon?: IconType; title?: string; disabled?: boolean };
 
 export function Segmented<T extends string>({ value, options, onChange, label, className, iconOnly }: { value: T; options: Array<SegmentOption<T>>; onChange: (value: T) => void; label: string; className?: string; iconOnly?: boolean }) {
+  const enabled = options.filter((option) => !option.disabled);
+  // One tab stop for the group (the chosen option); arrow keys move the choice, like native radio buttons.
+  const tabStop = enabled.some((option) => option.value === value) ? value : enabled[0]?.value;
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, current: T) => {
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+    const edge = event.key === "Home" ? 0 : event.key === "End" ? enabled.length - 1 : -1;
+    if (!step && edge < 0) return;
+    event.preventDefault();
+    const index = enabled.findIndex((option) => option.value === current);
+    const nextIndex = edge >= 0 ? edge : (index + step + enabled.length) % enabled.length;
+    const next = enabled[nextIndex];
+    if (!next) return;
+    const buttons = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)') || []);
+    buttons[nextIndex]?.focus();
+    if (next.value !== value) onChange(next.value);
+  };
   return (
     <div className={cx("lce-segmented", iconOnly && "lce-segmented--icons", className)} role="radiogroup" aria-label={label}>
       {options.map((option) => {
@@ -164,6 +180,8 @@ export function Segmented<T extends string>({ value, options, onChange, label, c
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={option.value === tabStop ? 0 : -1}
+            onKeyDown={(event) => handleKeyDown(event, option.value)}
             aria-label={iconOnly ? String(option.title || option.value) : undefined}
             title={option.title}
             disabled={option.disabled}
@@ -235,8 +253,15 @@ export function ColorField({ label, value, fallback = "#000000", onChange, hideL
   const parsed = parseColor(value, fallback);
   const [draft, setDraft] = useState(parsed.hex.slice(1));
   const [alphaDraft, setAlphaDraft] = useState(String(parsed.alpha));
-  useEffect(() => setDraft(parsed.hex.slice(1)), [parsed.hex]);
-  useEffect(() => setAlphaDraft(String(parsed.alpha)), [parsed.alpha]);
+  // While a field has focus, keep what the person typed ("123" stays "123", not "112233"); tidy it on blur or Enter.
+  const hexFocused = useRef(false);
+  const alphaFocused = useRef(false);
+  useEffect(() => {
+    if (!hexFocused.current) setDraft(parsed.hex.slice(1));
+  }, [parsed.hex]);
+  useEffect(() => {
+    if (!alphaFocused.current) setAlphaDraft(String(parsed.alpha));
+  }, [parsed.alpha]);
 
   const commitHex = (raw: string) => {
     const expanded = expandHexColor(raw);
@@ -262,7 +287,16 @@ export function ColorField({ label, value, fallback = "#000000", onChange, hideL
           setDraft(next);
           commitHex(next);
         }}
-        onBlur={() => setDraft(parsed.hex.slice(1))}
+        onFocus={() => {
+          hexFocused.current = true;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") setDraft(parsed.hex.slice(1));
+        }}
+        onBlur={() => {
+          hexFocused.current = false;
+          setDraft(parsed.hex.slice(1));
+        }}
       />
       <span className="lce-color__alpha">
         <input
@@ -274,7 +308,16 @@ export function ColorField({ label, value, fallback = "#000000", onChange, hideL
             const next = Number(event.target.value);
             if (event.target.value.trim() !== "" && Number.isFinite(next)) onChange(formatColor(parsed.hex, clampNumber(next, 0, 100)));
           }}
-          onBlur={() => setAlphaDraft(String(parsed.alpha))}
+          onFocus={() => {
+            alphaFocused.current = true;
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") setAlphaDraft(String(parsed.alpha));
+          }}
+          onBlur={() => {
+            alphaFocused.current = false;
+            setAlphaDraft(String(parsed.alpha));
+          }}
         />
         <span>%</span>
       </span>
@@ -310,6 +353,8 @@ export function Menu({ items, onClose, align = "end", className, label }: { item
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
+    // The control that opened the menu (focused by the click or key press), to return focus to on Escape.
+    const opener = document.activeElement instanceof HTMLElement && !ref.current?.contains(document.activeElement) ? document.activeElement : null;
     const handlePointerDown = (event: PointerEvent) => {
       const parent = ref.current?.parentElement;
       if (parent && parent.contains(event.target as Node)) return;
@@ -319,6 +364,7 @@ export function Menu({ items, onClose, align = "end", className, label }: { item
       if (event.key === "Escape") {
         event.stopPropagation();
         onCloseRef.current();
+        if (opener?.isConnected) opener.focus();
       }
     };
     window.addEventListener("pointerdown", handlePointerDown, true);

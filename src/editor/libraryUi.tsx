@@ -31,21 +31,25 @@ const KIND_LABELS: Record<LibraryKind, string> = { stamps: "Stamps", icons: "Ico
 function AssetTile({ asset, active, onSelect, onArchive, onRestore, onDelete }: { asset: LoyaltyCardEditorLibraryAsset; active: boolean; onSelect: (asset: LoyaltyCardEditorLibraryAsset) => void; onArchive?: (id: string) => Promise<void>; onRestore?: (id: string) => Promise<void>; onDelete?: (id: string) => Promise<void> }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const archived = asset.status === "archived";
-  const run = async (action: (id: string) => Promise<void>) => {
+  const run = async (action: (id: string) => Promise<void>, failure: string) => {
     setBusy(true);
+    setError(null);
     try {
       await action(asset.id);
+    } catch (actionError) {
+      setError(actionError instanceof Error && actionError.message ? actionError.message : failure);
     } finally {
       setBusy(false);
     }
   };
   const items: MenuItem[] = [
-    ...(onArchive && !archived ? [{ id: "archive", label: "Archive", icon: Archive02Icon, disabled: busy, onSelect: () => void run(onArchive) }] : []),
-    ...(onRestore && archived ? [{ id: "restore", label: "Restore", icon: Refresh01Icon, disabled: busy, onSelect: () => void run(onRestore) }] : []),
+    ...(onArchive && !archived ? [{ id: "archive", label: "Archive", icon: Archive02Icon, disabled: busy, onSelect: () => void run(onArchive, "Couldn't archive it. Try again.") }] : []),
+    ...(onRestore && archived ? [{ id: "restore", label: "Restore", icon: Refresh01Icon, disabled: busy, onSelect: () => void run(onRestore, "Couldn't restore it. Try again.") }] : []),
     ...(onDelete ? [{ id: "delete", label: "Delete for good", icon: Delete02Icon, danger: true, disabled: busy, onSelect: () => {
       if (typeof window !== "undefined" && !window.confirm(`Delete “${asset.name}” from the library for good? Cards that already use it keep rendering.`)) return;
-      void run(onDelete);
+      void run(onDelete, "Couldn't delete it. Try again.");
     } }] : []),
   ];
   return (
@@ -59,6 +63,7 @@ function AssetTile({ asset, active, onSelect, onArchive, onRestore, onDelete }: 
           {menuOpen ? <Menu label={`${asset.name} actions`} items={items} onClose={() => setMenuOpen(false)} /> : null}
         </span>
       ) : null}
+      {error ? <span className="lce-asset__error" role="alert" title={error}>{error}</span> : null}
     </div>
   );
 }
